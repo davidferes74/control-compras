@@ -1,7 +1,7 @@
 import {createHash,randomBytes} from 'node:crypto';
 import {z} from 'zod';
 export const gmailScope='https://www.googleapis.com/auth/gmail.readonly';
-export const googleRedirect='https://recepciones-ia.vercel.app/api/mail/google/callback';
+export const googleRedirect='https://control-compras-sentidino.vercel.app/api/mail/google/callback';
 export const hashState=(s:string)=>createHash('sha256').update(s).digest('hex');
 export const newState=()=>randomBytes(32).toString('hex');
 export function googleReady(){return Boolean(process.env.GOOGLE_CLIENT_ID&&process.env.GOOGLE_CLIENT_SECRET);}

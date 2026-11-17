@@ -1,5 +1,5 @@
 // Read-only deployed smoke checks. Supply credentials only through the environment.
-const base=process.env.SMOKE_BASE_URL||'https://recepciones-ia.vercel.app';
+const base=process.env.SMOKE_BASE_URL||'https://control-compras-sentidino.vercel.app';
 if(!base.startsWith('https://'))throw new Error('Use HTTPS.');
 const username=process.env.SMOKE_USERNAME,password=process.env.SMOKE_PASSWORD;
 if(!username||!password)throw new Error('Set SMOKE_USERNAME and SMOKE_PASSWORD.');

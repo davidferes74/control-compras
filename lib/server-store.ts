@@ -4,7 +4,7 @@ import {emptyWorkspace} from './seed';
 import type {Workspace} from './types';
 let pool:Pool|undefined;
 export function getPool(){if(!process.env.DATABASE_URL)throw new Error('Base de datos no configurada.');return pool??=new Pool({connectionString:process.env.DATABASE_URL,max:3});}
-export const org=()=>process.env.ORGANIZATION_ID||'recepciones-ia';
+export const org=()=>process.env.ORGANIZATION_ID||'control-compras';
 export async function readWorkspace():Promise<Workspace>{const p=getPool();const r=await p.query('SELECT state FROM ria_workspaces WHERE organization_id=$1',[org()]);return r.rows[0]?.state||emptyWorkspace();}
 export async function transact(e:Envelope):Promise<Workspace>{const client=await getPool().connect();try{
  await client.query('BEGIN');await client.query('INSERT INTO ria_workspaces(organization_id,state) VALUES($1,$2) ON CONFLICT DO NOTHING',[org(),JSON.stringify(emptyWorkspace())]);
