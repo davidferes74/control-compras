@@ -1,10 +1,10 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
-import {Inbox,FileText,Truck,AlertTriangle,History,Settings2,Upload,Camera,Plus,Search,LogOut,Moon,Sun,Mail,FileCheck2,Loader2,ChevronRight,RefreshCw} from 'lucide-react';
+import {Inbox,FileText,Truck,AlertTriangle,History,Settings2,Upload,Camera,Plus,Search,LogOut,Mail,FileCheck2,Loader2,ChevronRight,RefreshCw} from 'lucide-react';
 import {api,money,date,dateTime,kindLabel,statusInfo,type AppState,type ListItem,type Kind} from './lib';
 import DocumentView from './document-view';
 import SettingsView from './settings';
-import {go,StatusBadge,PageHead,Empty} from './ui';
+import {go,StatusBadge,PageHead,Empty,ThemePicker} from './ui';
 
 type View='bandeja'|'facturas'|'albaranes'|'diferencias'|'historico'|'ajustes'|'doc';
 const nav:{id:Exclude<View,'doc'>;label:string;icon:typeof Inbox}[]=[{id:'bandeja',label:'Bandeja',icon:Inbox},{id:'facturas',label:'Facturas',icon:FileText},{id:'albaranes',label:'Albaranes',icon:Truck},{id:'diferencias',label:'Diferencias',icon:AlertTriangle},{id:'historico',label:'Histórico',icon:History},{id:'ajustes',label:'Ajustes',icon:Settings2}];
@@ -12,11 +12,10 @@ function readHash():{view:View;id?:string}{const h=typeof window==='undefined'?'
 
 
 export default function App({initialAuthed,user}:{initialAuthed:boolean;user:string}){
- const [authed,setAuthed]=useState(initialAuthed),[state,setState]=useState<AppState|null>(null),[route,setRoute]=useState<{view:View;id?:string}>({view:'bandeja'}),[error,setError]=useState(''),[theme,setTheme]=useState<'light'|'dark'>('light');
+ const [authed,setAuthed]=useState(initialAuthed),[state,setState]=useState<AppState|null>(null),[route,setRoute]=useState<{view:View;id?:string}>({view:'bandeja'}),[error,setError]=useState('');
  const load=useCallback(async()=>{try{setState(await api<AppState>('/api/state'));setError('');}catch(e){const err=e as Error&{status?:number};if(err.status===401)setAuthed(false);else setError(err.message);}},[]);
- useEffect(()=>{const on=()=>{setRoute(readHash());window.scrollTo(0,0);};on();window.addEventListener('hashchange',on);setTheme(document.documentElement.getAttribute('data-theme')==='dark'?'dark':'light');return()=>window.removeEventListener('hashchange',on);},[]);
+ useEffect(()=>{const on=()=>{setRoute(readHash());window.scrollTo(0,0);};on();window.addEventListener('hashchange',on);return()=>window.removeEventListener('hashchange',on);},[]);
  useEffect(()=>{if(authed)load();},[authed,load]);
- function toggleTheme(){const next=theme==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',next);try{localStorage.setItem('cc-theme',next);}catch{/* sin almacenamiento */}setTheme(next);}
  async function logout(){await api('/api/session',{method:'DELETE'}).catch(()=>{});setAuthed(false);setState(null);}
  if(!authed)return <Login user={user} onDone={()=>setAuthed(true)}/>;
  const docs=state?.documents||[],drafts=docs.filter(d=>d.status==='draft'),openInvoices=docs.filter(d=>d.status==='confirmed'&&d.kind==='invoice'&&d.issues.length);
@@ -25,7 +24,7 @@ export default function App({initialAuthed,user}:{initialAuthed:boolean;user:str
  return <div className="shell">
   <aside className="sidebar"><div className="brand"><span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 28 28" width="20" height="20"><path d="M3 9h22M3 19h22" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/><path d="M9 4v20M19 4v20" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" opacity=".45"/></svg></span><span>Control de compras<small>SENTIDIÑO</small></span></div>
    <nav aria-label="Secciones">{nav.map(n=><a key={n.id} href={'#'+n.id} className={'nav-item'+(active===n.id?' active':'')} aria-current={active===n.id?'page':undefined}><n.icon size={18}/><span>{n.label}</span>{count(n.id)>0&&<span className="nav-count">{count(n.id)}</span>}</a>)}</nav>
-   <div className="sidebar-foot"><button className="ghost" onClick={toggleTheme}>{theme==='dark'?<Sun size={16}/>:<Moon size={16}/>}{theme==='dark'?'Tema claro':'Tema oscuro'}</button><button className="ghost" onClick={logout}><LogOut size={16}/>Cerrar sesión</button></div></aside>
+   <div className="sidebar-foot"><ThemePicker compact/><button className="ghost" onClick={logout}><LogOut size={16}/>Cerrar sesión</button></div></aside>
   <main className="main">
    {error&&<div className="alert danger" role="alert">{error} <button className="link" onClick={load}>Reintentar</button></div>}
    {!state?<div className="loading"><Loader2 className="spin" size={22}/>Cargando…</div>:

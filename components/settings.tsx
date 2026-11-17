@@ -1,8 +1,8 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {Mail,FolderOpen,Sparkles,Loader2,ExternalLink,Link2Off,CheckCircle2,AlertTriangle,Sheet} from 'lucide-react';
+import {Mail,FolderOpen,Sparkles,Loader2,ExternalLink,Link2Off,CheckCircle2,AlertTriangle,Sheet,Palette} from 'lucide-react';
 import {api,dateTime,type AppState} from './lib';
-import {PageHead,Badge} from './ui';
+import {PageHead,Badge,ThemePicker} from './ui';
 
 declare global{interface Window{gapi?:{load:(name:string,cb:()=>void)=>void};google?:any}}
 let pickerReady:Promise<void>|null=null;
@@ -49,6 +49,8 @@ export default function SettingsView({state,reload}:{state:AppState;reload:()=>P
     <div className="form-grid"><label>Revisar correos desde<input type="date" value={since} onChange={e=>setSince(e.target.value)}/></label>
      <label className="check span2"><input type="checkbox" checked={autoRead} onChange={e=>setAutoRead(e.target.checked)}/>Leer automáticamente con IA los adjuntos nuevos</label></div>
     <button className="btn primary" onClick={saveGmail} disabled={!!busy}>{busy==='gmail'?<Loader2 size={16} className="spin"/>:<CheckCircle2 size={16}/>}Guardar</button></>}</section>
+
+  <section className="panel setting"><div className="setting-head"><span className="setting-icon"><Palette size={20}/></span><div><h2>Apariencia</h2><p className="muted">Elige el fondo de la aplicación. Se recuerda en este navegador.</p></div></div><ThemePicker/></section>
 
   <section className="panel setting"><div className="setting-head"><span className="setting-icon"><Sparkles size={20}/></span><div><h2>Lectura con IA</h2><p className="muted">Claude transcribe los documentos; la conciliación la hacen reglas exactas. Nada se da por bueno sin que una persona confirme.</p></div>{state.ai.configured?<Badge tone="success">Activa</Badge>:<Badge tone="warning">Sin clave</Badge>}</div>
    {state.ai.configured?<p>Modelo <code>{state.ai.model}</code> · hoy {state.ai.used} de {state.ai.limit} lecturas.</p>:<p>Falta <code>ANTHROPIC_API_KEY</code> en Vercel.</p>}</section>
