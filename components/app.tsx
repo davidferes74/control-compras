@@ -4,6 +4,7 @@ import {Inbox,FileText,Truck,AlertTriangle,History,Settings2,Upload,Camera,Plus,
 import {api,money,date,dateTime,kindLabel,statusInfo,type AppState,type ListItem,type Kind} from './lib';
 import DocumentView from './document-view';
 import SettingsView from './settings';
+import Sheet from './sheet';
 import {go,StatusBadge,PageHead,Empty,ThemePicker} from './ui';
 
 type View='bandeja'|'facturas'|'albaranes'|'diferencias'|'historico'|'ajustes'|'doc';
@@ -12,15 +13,19 @@ function readHash():{view:View;id?:string}{const h=typeof window==='undefined'?'
 
 
 export default function App({initialAuthed,user}:{initialAuthed:boolean;user:string}){
- const [authed,setAuthed]=useState(initialAuthed),[state,setState]=useState<AppState|null>(null),[route,setRoute]=useState<{view:View;id?:string}>({view:'bandeja'}),[error,setError]=useState('');
+ const [authed,setAuthed]=useState(initialAuthed),[state,setState]=useState<AppState|null>(null),[route,setRoute]=useState<{view:View;id?:string}>({view:'bandeja'}),[error,setError]=useState(''),[mobile,setMobile]=useState(false),lastView=useRef<Exclude<View,'doc'>>('bandeja');
  const load=useCallback(async()=>{try{setState(await api<AppState>('/api/state'));setError('');}catch(e){const err=e as Error&{status?:number};if(err.status===401)setAuthed(false);else setError(err.message);}},[]);
- useEffect(()=>{const on=()=>{setRoute(readHash());window.scrollTo(0,0);};on();window.addEventListener('hashchange',on);return()=>window.removeEventListener('hashchange',on);},[]);
+ // En el móvil el documento se abre como hoja sobre la lista: no se vuelve arriba al abrirlo.
+ useEffect(()=>{const mq=window.matchMedia('(max-width: 860px)');const set=()=>setMobile(mq.matches);set();mq.addEventListener('change',set);return()=>mq.removeEventListener('change',set);},[]);
+ useEffect(()=>{const on=()=>{const next=readHash();setRoute(next);if(next.view!=='doc'||!window.matchMedia('(max-width: 860px)').matches)window.scrollTo(0,0);};on();window.addEventListener('hashchange',on);return()=>window.removeEventListener('hashchange',on);},[]);
  useEffect(()=>{if(authed)load();},[authed,load]);
  async function logout(){await api('/api/session',{method:'DELETE'}).catch(()=>{});setAuthed(false);setState(null);}
  if(!authed)return <Login user={user} onDone={()=>setAuthed(true)}/>;
  const docs=state?.documents||[],drafts=docs.filter(d=>d.status==='draft'),openInvoices=docs.filter(d=>d.status==='confirmed'&&d.kind==='invoice'&&d.issues.length);
  const count=(id:View)=>id==='bandeja'?drafts.length:id==='diferencias'?openInvoices.length:0;
- const active=route.view==='doc'?null:route.view;
+ if(route.view!=='doc')lastView.current=route.view;
+ const active=route.view==='doc'?(mobile?lastView.current:null):route.view;
+ const sheetDoc=mobile&&route.view==='doc'&&route.id?route.id:null,shown=sheetDoc?lastView.current:route.view;
  return <div className="shell">
   <aside className="sidebar"><div className="brand"><span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 28 28" width="20" height="20"><path d="M3 9h22M3 19h22" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/><path d="M9 4v20M19 4v20" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" opacity=".45"/></svg></span><span>Control de compras<small>SENTIDIÑO</small></span></div>
    <nav aria-label="Secciones">{nav.map(n=><a key={n.id} href={'#'+n.id} className={'nav-item'+(active===n.id?' active':'')} aria-current={active===n.id?'page':undefined}><n.icon size={18}/><span>{n.label}</span>{count(n.id)>0&&<span className="nav-count">{count(n.id)}</span>}</a>)}</nav>
@@ -28,14 +33,15 @@ export default function App({initialAuthed,user}:{initialAuthed:boolean;user:str
   <main className="main">
    {error&&<div className="alert danger" role="alert">{error} <button className="link" onClick={load}>Reintentar</button></div>}
    {!state?<div className="loading"><Loader2 className="spin" size={22}/>Cargando…</div>:
-    route.view==='doc'&&route.id?<DocumentView key={route.id} id={route.id} onChanged={load}/>:
-    route.view==='bandeja'?<InboxView state={state} reload={load}/>:
-    route.view==='facturas'?<ListView kind="invoice" items={docs} />:
-    route.view==='albaranes'?<ListView kind="delivery_note" items={docs}/>:
-    route.view==='diferencias'?<IssuesView items={openInvoices}/>:
-    route.view==='historico'?<HistoryView/>:
+    shown==='doc'&&route.id?<DocumentView key={route.id} id={route.id} onChanged={load}/>:
+    shown==='bandeja'?<InboxView state={state} reload={load}/>:
+    shown==='facturas'?<ListView kind="invoice" items={docs} />:
+    shown==='albaranes'?<ListView kind="delivery_note" items={docs}/>:
+    shown==='diferencias'?<IssuesView items={openInvoices}/>:
+    shown==='historico'?<HistoryView/>:
     <SettingsView state={state} reload={load}/>}
   </main>
+  {sheetDoc&&state&&<Sheet key={sheetDoc} label="Documento" onClose={()=>go(lastView.current)}><DocumentView id={sheetDoc} onChanged={load}/></Sheet>}
   <nav className="tabbar" aria-label="Secciones">{nav.filter(n=>n.id!=='historico').map(n=><a key={n.id} href={'#'+n.id} className={active===n.id?'active':''}><n.icon size={20}/><span>{n.label}</span>{count(n.id)>0&&<i>{count(n.id)}</i>}</a>)}</nav>
  </div>;
 }

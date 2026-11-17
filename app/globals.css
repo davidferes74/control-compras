@@ -287,3 +287,80 @@ a.doc-row:active,.issue-card:active{background:var(--surface-muted)}
 }
 .hold-wrap{display:inline-flex;flex-direction:column;align-items:flex-end;gap:2px}
 .hold-tip{color:var(--text-muted);font-size:var(--text-xs)}
+
+/* ============================================================
+   Estilo Apple (apple-design): materiales translúcidos, profundidad según tamaño,
+   tipografía con tracking por tamaño y hoja deslizable en el móvil.
+   ============================================================ */
+:root{--glass:rgb(255 255 255 / .72);--glass-strong:rgb(250 251 253 / .8);--glass-edge:rgb(255 255 255 / .65);--ease-drawer:cubic-bezier(0.32,0.72,0,1);
+ --shadow-panel:0 1px 2px rgb(15 32 54 / .04),0 8px 24px rgb(15 32 54 / .06);--tint-a:rgb(31 95 168 / .10);--tint-b:rgb(104 80 185 / .06)}
+:root[data-theme="slate"]{--glass:rgb(232 237 245 / .7);--glass-strong:rgb(228 234 242 / .78);--glass-edge:rgb(255 255 255 / .55);--tint-a:rgb(31 95 168 / .14);--tint-b:rgb(104 80 185 / .08)}
+:root[data-theme="dark"]{--glass:rgb(20 23 27 / .7);--glass-strong:rgb(18 21 25 / .8);--glass-edge:rgb(255 255 255 / .06);--shadow-panel:0 1px 0 rgb(255 255 255 / .03) inset,0 10px 28px rgb(0 0 0 / .28);--tint-a:rgb(127 182 245 / .08);--tint-b:rgb(170 157 244 / .05)}
+
+/* Fondo con un tinte muy suave: da textura a lo que el cristal difumina. */
+body{background:radial-gradient(900px 520px at 88% -8%,var(--tint-a),transparent 65%),radial-gradient(760px 520px at -6% 108%,var(--tint-b),transparent 60%),var(--background);background-attachment:fixed;letter-spacing:0;font-optical-sizing:auto}
+
+/* Tipografía: tracking por tamaño. Títulos más juntos, texto pequeño algo más abierto. */
+h1{letter-spacing:-.03em;line-height:1.05}
+h2{letter-spacing:-.02em;line-height:1.2}
+.small,.badge,label,.doc-main small,.muted.small,.chip,.theme-picker button,.tabbar a{letter-spacing:.01em}
+.doc-row.head,.line.head,.cmp.head{letter-spacing:.06em}
+
+/* Material pesado para la estructura (menú lateral) y ligero para lo flotante (cabeceras, barra inferior). */
+.sidebar{background:var(--glass-strong);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border-right-color:var(--glass-edge);box-shadow:1px 0 0 rgb(15 32 54 / .04)}
+.main{--pad-x:clamp(16px,4vw,48px);--pad-top:var(--space-8)}
+.page-head,.doc-top{position:sticky;top:0;z-index:15;margin-top:calc(-1 * var(--pad-top));margin-inline:calc(-1 * var(--pad-x));padding:var(--pad-top) var(--pad-x) var(--space-4);background:var(--glass);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%)}
+/* Borde de desplazamiento: un degradado donde el contenido pasa por debajo, no una línea dura. */
+.page-head::after,.doc-top::after{content:"";position:absolute;left:0;right:0;top:100%;height:14px;background:linear-gradient(var(--glass),transparent);pointer-events:none}
+.main>.alert:first-child+.page-head,.main>.alert:first-child+.docview .doc-top{margin-top:0}
+.docview .doc-top{margin-bottom:var(--space-4)}
+
+/* Profundidad según tamaño: paneles grandes con más sombra; etiquetas y chips, planos. */
+.panel,.issue-card,.dropzone,.setup-card{box-shadow:var(--shadow-panel)}
+.match{box-shadow:inset 4px 0 0 var(--border-strong),var(--shadow-panel)}
+.match.tone-ok,.match.tone-invoiced{box-shadow:inset 4px 0 0 var(--success),var(--shadow-panel)}
+.match.tone-diff{box-shadow:inset 4px 0 0 var(--danger),var(--shadow-panel)}
+.match.tone-missing,.match.tone-partial{box-shadow:inset 4px 0 0 var(--warning),var(--shadow-panel)}
+.match.tone-review{box-shadow:inset 4px 0 0 var(--info),var(--shadow-panel)}
+
+@media (max-width:860px){
+ .main{--pad-x:16px;--pad-top:var(--space-5)}
+ .tabbar{background:var(--glass);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border-top-color:var(--glass-edge)}
+}
+
+/* Hoja deslizable (móvil): el documento sube desde abajo sobre la lista y se cierra arrastrando hacia abajo. */
+.sheet-scrim{position:fixed;inset:0;z-index:40;background:rgb(5 12 20 / .34);transition:opacity 300ms ease}
+@starting-style{.sheet-scrim{opacity:0}}
+.sheet-scrim.closing{opacity:0}
+.sheet{position:fixed;left:0;right:0;bottom:0;top:calc(12px + env(safe-area-inset-top));z-index:41;display:flex;flex-direction:column;background:var(--background);border-radius:18px 18px 0 0;box-shadow:var(--shadow-floating);transform:translateY(0);transition:transform 420ms var(--ease-drawer)}
+@starting-style{.sheet{transform:translateY(100%)}}
+.sheet-grab{flex:none;position:relative;display:flex;align-items:center;justify-content:center;min-height:40px;touch-action:none;cursor:grab;border-radius:18px 18px 0 0}
+.sheet-grab:active{cursor:grabbing}
+.sheet-handle{width:40px;height:5px;border-radius:3px;background:var(--border-strong)}
+.sheet-close{position:absolute;right:8px;top:4px}
+.sheet-body{flex:1;overflow:auto;overscroll-behavior:contain;padding:0 16px calc(24px + env(safe-area-inset-bottom));--pad-x:16px;--pad-top:0px}
+.sheet-body .doc-top{padding-top:var(--space-2)}
+.sheet-body .doc-top .ghost-btn{display:none}
+.sheet-open{overflow:hidden}
+
+/* Accesibilidad: menos transparencia → materiales sólidos; más contraste → bordes definidos. */
+@media (prefers-reduced-transparency:reduce){
+ .sidebar,.page-head,.doc-top,.tabbar{background:var(--surface);-webkit-backdrop-filter:none;backdrop-filter:none}
+ .page-head::after,.doc-top::after{display:none}
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.sidebar,.page-head,.doc-top,.tabbar{background:var(--surface)}}
+@media (prefers-contrast:more){
+ :root{--glass:var(--surface);--glass-strong:var(--surface);--border:var(--border-strong)}
+ .sidebar,.page-head,.doc-top,.tabbar{-webkit-backdrop-filter:none;backdrop-filter:none;border-bottom:1px solid var(--border-strong)}
+}
+@media (prefers-reduced-motion:reduce){
+ .sheet{transition:opacity 200ms ease}
+ @starting-style{.sheet{transform:none;opacity:0}}
+}
+
+/* Los números de documento no se recortan nunca (break-ui): pasan a otra línea si no caben. */
+.doc-row{grid-template-columns:minmax(0,1fr) 96px 104px max-content 16px}
+.doc-main strong{white-space:normal;overflow-wrap:anywhere}
+@media (max-width:860px){.doc-row{grid-template-columns:minmax(0,1fr) auto}}
+.doc-row{grid-template-columns:minmax(0,1fr) 96px 104px 150px 16px}
+@media (max-width:860px){.doc-row{grid-template-columns:minmax(0,1fr) auto}}
