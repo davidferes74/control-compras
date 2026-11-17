@@ -1,0 +1,5 @@
+import pg from 'pg';
+import {readFile} from 'node:fs/promises';
+if(!process.env.DATABASE_URL){console.log('DATABASE_URL ausente: migración omitida, solo demostración.');process.exit(0);}
+const client=new pg.Client({connectionString:process.env.DATABASE_URL});
+await client.connect();try{await client.query(await readFile(new URL('../migrations/001_workspace.sql',import.meta.url),'utf8'));await client.query(await readFile(new URL('../migrations/002_documents.sql',import.meta.url),'utf8'));await client.query(await readFile(new URL('../migrations/003_mail.sql',import.meta.url),'utf8'));await client.query(await readFile(new URL('../migrations/004_google.sql',import.meta.url),'utf8'));await client.query(await readFile(new URL('../migrations/005_integrations.sql',import.meta.url),'utf8'));await client.query(await readFile(new URL('../migrations/006_sso.sql',import.meta.url),'utf8'));await client.query(await readFile(new URL('../migrations/007_mail_reading.sql',import.meta.url),'utf8'));console.log('Migraciones 001 a 007 aplicadas.');}finally{await client.end();}

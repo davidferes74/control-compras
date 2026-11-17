@@ -1,0 +1,7 @@
+import {NextRequest,NextResponse} from 'next/server';
+import {authorized,sameOrigin} from '@/lib/auth';
+import {getPool,org} from '@/lib/server-store';
+import {encryptionReady} from '@/lib/mail-config';
+import {authorizationUrl,newState,hashState,googleReady,googleRedirect} from '@/lib/google-oauth';
+export const runtime='nodejs';
+export async function POST(req:NextRequest){if(!authorized(req))return NextResponse.json({error:'Inicia sesión.'},{status:401});if(!sameOrigin(req)||new URL(req.url).origin!==new URL(googleRedirect).origin)return NextResponse.json({error:'Conecta Google desde la URL de producción.'},{status:403});if(!googleReady()||!encryptionReady())return NextResponse.json({error:'Configura GOOGLE_CLIENT_ID y GOOGLE_CLIENT_SECRET en Vercel Production. La clave de cifrado también debe estar configurada.'},{status:503});try{const state=newState();await getPool().query('DELETE FROM ria_oauth_states WHERE expires_at<now() OR (organization_id=$1 AND session_hash=$2)',[org(),hashState(req.cookies.get('ria_session')!.value)]);await getPool().query("INSERT INTO ria_oauth_states(state_hash,organization_id,session_hash,expires_at) VALUES($1,$2,$3,now()+interval '10 minutes')",[hashState(state),org(),hashState(req.cookies.get('ria_session')!.value)]);return NextResponse.json({url:authorizationUrl(state)},{headers:{'Cache-Control':'no-store'}});}catch{return NextResponse.json({error:'No se pudo iniciar la autorización.'},{status:503});}}

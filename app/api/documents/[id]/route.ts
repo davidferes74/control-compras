@@ -1,0 +1,4 @@
+import {NextRequest,NextResponse} from 'next/server';
+import {authorized} from '@/lib/auth';
+import {getPool,org} from '@/lib/server-store';
+export async function GET(req:NextRequest,{params}:{params:Promise<{id:string}>}){if(!authorized(req))return NextResponse.json({error:'Inicia sesión.'},{status:401});const {id}=await params;if(!/^[0-9a-f-]{36}$/.test(id))return new NextResponse(null,{status:404});try{const r=await getPool().query('SELECT original,mime FROM ria_documents WHERE id=$1 AND organization_id=$2',[id,org()]);if(!r.rows.length)return new NextResponse(null,{status:404});return new NextResponse(new Uint8Array(r.rows[0].original),{headers:{'Content-Type':r.rows[0].mime,'Content-Disposition':'attachment; filename="documento"','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}catch{return new NextResponse(null,{status:503});}}
