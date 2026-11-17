@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useState} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {Sun,CloudMoon,Moon} from 'lucide-react';
 import {statusInfo,type Kind} from './lib';
 export type Theme='light'|'slate'|'dark';
@@ -8,10 +8,21 @@ const themes:{id:Theme;label:string;icon:typeof Sun}[]=[{id:'light',label:'Claro
 export function ThemePicker({compact}:{compact?:boolean}){
  const [theme,setTheme]=useState<Theme>('slate');
  useEffect(()=>{const read=()=>setTheme((document.documentElement.getAttribute('data-theme') as Theme)||'slate');read();window.addEventListener('cc:theme',read);return()=>window.removeEventListener('cc:theme',read);},[]);
- function pick(t:Theme){document.documentElement.setAttribute('data-theme',t);try{localStorage.setItem('cc-theme',t);}catch{/* sin almacenamiento */}window.dispatchEvent(new Event('cc:theme'));}
+ // El cambio de fondo funde los colores en 240 ms (data-theme-transition, definido en la fundación de Sentidiño).
+ function pick(t:Theme){const root=document.documentElement;root.setAttribute('data-theme-transition','');root.setAttribute('data-theme',t);setTimeout(()=>root.removeAttribute('data-theme-transition'),300);try{localStorage.setItem('cc-theme',t);}catch{/* sin almacenamiento */}window.dispatchEvent(new Event('cc:theme'));}
  return <div className={'theme-picker'+(compact?' compact':'')} role="radiogroup" aria-label="Fondo">{themes.map(t=><button key={t.id} role="radio" aria-checked={theme===t.id} className={theme===t.id?'on':''} onClick={()=>pick(t.id)} title={t.label}><t.icon size={15}/>{!compact&&<span>{t.label}</span>}</button>)}</div>;}
 export const go=(hash:string)=>{window.location.hash=hash;};
 export function Badge({tone='neutral',children}:{tone?:string;children:React.ReactNode}){return <span className={'badge '+tone}>{children}</span>;}
 export function StatusBadge({item}:{item:{kind:Kind;status:string;matchStatus:string|null}}){if(item.status==='draft')return <Badge tone="draft">Por revisar</Badge>;if(item.kind==='credit_note')return <Badge>Revisión manual</Badge>;const s=item.matchStatus?statusInfo[item.matchStatus]:null;return s?<Badge tone={s.tone}>{s.label}</Badge>:<Badge>Sin conciliar</Badge>;}
 export function PageHead({eyebrow,title,children}:{eyebrow:string;title:string;children?:React.ReactNode}){return <header className="page-head"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>{children&&<div className="page-actions">{children}</div>}</header>;}
+/** Botón destructivo de «mantener pulsado» (1,2 s). Funciona con ratón, táctil y teclado (mantener Espacio o Intro). */
+export function HoldButton({onConfirm,disabled,children,hint}:{onConfirm:()=>void;disabled?:boolean;children:React.ReactNode;hint:string}){
+ const [holding,setHolding]=useState(false),[tip,setTip]=useState(false),timer=useRef<number|undefined>(undefined);
+ const start=()=>{if(disabled||timer.current)return;setHolding(true);setTip(false);timer.current=window.setTimeout(()=>{timer.current=undefined;setHolding(false);onConfirm();},1200);};
+ const stop=()=>{if(timer.current){window.clearTimeout(timer.current);timer.current=undefined;setTip(true);}setHolding(false);};
+ useEffect(()=>()=>window.clearTimeout(timer.current),[]);
+ return <span className="hold-wrap"><button type="button" className={'btn danger-btn hold'+(holding?' holding':'')} disabled={disabled} title={hint} aria-description={hint}
+  onPointerDown={e=>{if(e.button===0)start();}} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop} onContextMenu={e=>e.preventDefault()}
+  onKeyDown={e=>{if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();start();}}} onKeyUp={e=>{if(e.key===' '||e.key==='Enter')stop();}}>
+  <span className="hold-fill" aria-hidden="true"/>{children}</button>{tip&&!holding&&<small className="hold-tip" role="status">{hint}</small>}</span>;}
 export function Empty({title,text}:{title:string;text:string}){return <div className="empty"><strong>{title}</strong><p>{text}</p></div>;}

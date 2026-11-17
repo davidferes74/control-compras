@@ -2,7 +2,7 @@
    Dirección: libro de cuentas técnico. Números tabulares alineados, una regla de color a la izquierda
    como único indicador de estado (siempre acompañada de texto), acento azul Sentidiño con moderación. */
 /* Tres fondos a elegir: «light» (claro de Sentidiño), «slate» (gris azulado, por defecto) y «dark» (oscuro). */
-:root{--sidebar:var(--surface)}
+:root{--sidebar:var(--surface);--ease-out:cubic-bezier(0.23,1,0.32,1)}
 :root[data-theme="slate"]{--background:#dbe2ec;--surface-muted:#eef2f7;--border:#d3dbe6;--border-subtle:#e7ecf2;--border-strong:#b4bfcd;--sidebar:#e9eef5;--shadow-resting:0 1px 2px rgb(15 32 54 / .06),0 1px 1px rgb(15 32 54 / .03)}
 :root[data-theme="dark"]{--sidebar:var(--surface)}
 *,*::before,*::after{box-sizing:border-box}
@@ -14,7 +14,6 @@ h1{font-size:clamp(1.5rem,1.2rem + 1.2vw,var(--text-3xl))}
 h2{font-size:var(--text-lg)}
 p{margin:0}
 a{color:var(--accent);text-decoration:none}
-a:hover{text-decoration:underline;text-underline-offset:3px}
 code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;background:var(--surface-muted);padding:1px 6px;border-radius:6px;overflow-wrap:anywhere}
 button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}
 button:disabled{cursor:default;opacity:.55}
@@ -28,29 +27,24 @@ label small{font-weight:400;color:var(--text-muted)}
 .muted{color:var(--text-muted)}
 .small{font-size:var(--text-xs)}
 .eyebrow{font-size:.7rem;font-weight:650;letter-spacing:.09em;color:var(--text-muted);margin-bottom:6px}
-.spin{animation:spin 900ms linear infinite}
+.spin{animation:spin 700ms linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}}
 
 /* Botones */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:var(--radius-control);border:1px solid var(--border);background:var(--surface);font-weight:600;white-space:nowrap;transition:background var(--duration-fast) var(--ease-standard),border-color var(--duration-fast) var(--ease-standard),transform var(--duration-instant) var(--ease-standard)}
-.btn:hover:not(:disabled){border-color:var(--border-strong);background:var(--surface-muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:var(--radius-control);border:1px solid var(--border);background:var(--surface);font-weight:600;white-space:nowrap;transition:background var(--duration-fast) var(--ease-standard),border-color var(--duration-fast) var(--ease-standard),transform 160ms var(--ease-out)}
 .btn:active:not(:disabled){transform:scale(.97)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-foreground)}
-.btn.primary:hover:not(:disabled){background:var(--accent-strong);border-color:var(--accent-strong)}
 .btn.small{min-height:36px;padding:0 12px;font-size:var(--text-xs)}
 .btn.danger-btn{color:var(--danger);border-color:transparent;background:transparent}
-.btn.danger-btn:hover:not(:disabled){background:var(--danger-bg);border-color:transparent}
 .btn.ghost-btn{border-color:transparent;background:transparent;padding:0 10px;color:var(--text-secondary)}
 .link{display:inline-flex;align-items:center;gap:4px;color:var(--accent);font-weight:600;min-height:32px}
-.link:hover:not(:disabled){text-decoration:underline;text-underline-offset:3px}
 .link.danger{color:var(--danger)}
 .icon{display:grid;place-items:center;width:36px;height:36px;border-radius:var(--radius-chip);color:var(--text-muted)}
-.icon:hover{background:var(--surface-muted);color:var(--danger)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Etiquetas de estado: siempre con texto, el color solo refuerza */
-.badge{display:inline-flex;align-items:center;gap:4px;border-radius:var(--radius-pill);padding:3px 10px;font-size:.72rem;font-weight:650;white-space:nowrap;background:var(--surface-muted);color:var(--text-secondary)}
+.badge{display:inline-flex;align-items:center;gap:4px;flex-shrink:0;border-radius:var(--radius-pill);padding:3px 10px;font-size:.72rem;font-weight:650;white-space:nowrap;background:var(--surface-muted);color:var(--text-secondary)}
 .badge.success{background:var(--success-bg);color:var(--success)}
 .badge.warning{background:var(--warning-bg);color:var(--warning)}
 .badge.danger{background:var(--danger-bg);color:var(--danger)}
@@ -73,12 +67,10 @@ label small{font-weight:400;color:var(--text-muted)}
 .brand-mark{display:grid;place-items:center;width:36px;height:36px;border-radius:10px;background:var(--accent);color:var(--accent-foreground)}
 .sidebar nav{display:flex;flex-direction:column;gap:2px}
 .nav-item{display:flex;align-items:center;gap:12px;min-height:42px;padding:0 12px;border-radius:var(--radius-chip);color:var(--text-secondary);font-weight:500}
-.nav-item:hover{background:var(--surface-muted);text-decoration:none;color:var(--foreground)}
 .nav-item.active{background:var(--accent-subtle);color:var(--accent-strong);font-weight:650}
 .nav-count{margin-left:auto;border-radius:var(--radius-pill);background:var(--accent);color:var(--accent-foreground);font-size:.7rem;font-weight:650;padding:1px 8px;font-variant-numeric:tabular-nums}
 .sidebar-foot{margin-top:auto;display:flex;flex-direction:column;gap:2px}
 .ghost{display:flex;align-items:center;gap:10px;min-height:40px;padding:0 12px;border-radius:var(--radius-chip);color:var(--text-muted);font-weight:500}
-.ghost:hover{background:var(--surface-muted);color:var(--foreground)}
 .main{min-width:0;padding:var(--space-8) clamp(16px,4vw,48px) var(--space-16);max-width:1320px;width:100%}
 .tabbar{display:none}
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--space-4);margin-bottom:var(--space-6);flex-wrap:wrap}
@@ -113,7 +105,6 @@ label small{font-weight:400;color:var(--text-muted)}
 /* Tablas de documentos: regla de estado a la izquierda */
 .doc-row{display:grid;grid-template-columns:minmax(0,1fr) 120px 120px 190px 20px;align-items:center;gap:var(--space-4);padding:12px var(--space-5);border-top:1px solid var(--border-subtle);color:inherit;box-shadow:inset 3px 0 0 transparent;transition:background var(--duration-fast) var(--ease-standard)}
 .doc-row.head{border-top:0;padding-block:10px;font-size:.68rem;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted)}
-a.doc-row:hover{background:var(--surface-muted);text-decoration:none}
 .doc-row.tone-diff{box-shadow:inset 3px 0 0 var(--danger)}.doc-row.tone-missing,.doc-row.tone-partial{box-shadow:inset 3px 0 0 var(--warning)}.doc-row.tone-review{box-shadow:inset 3px 0 0 var(--info)}.doc-row.tone-ok,.doc-row.tone-invoiced{box-shadow:inset 3px 0 0 var(--success)}.doc-row.tone-draft{box-shadow:inset 3px 0 0 var(--accent)}
 .doc-main{min-width:0;display:flex;flex-direction:column}
 .doc-main strong{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -135,7 +126,6 @@ a.doc-row:hover{background:var(--surface-muted);text-decoration:none}
 .issue-cards{display:grid;gap:var(--space-3)}
 .issue-card{display:block;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-panel);padding:var(--space-4) var(--space-5);color:inherit;box-shadow:inset 3px 0 0 var(--warning)}
 .issue-card.tone-diff{box-shadow:inset 3px 0 0 var(--danger)}.issue-card.tone-review{box-shadow:inset 3px 0 0 var(--info)}
-.issue-card:hover{text-decoration:none;border-color:var(--border-strong)}
 .issue-card-head{display:flex;justify-content:space-between;gap:var(--space-3);align-items:flex-start}
 .issue-card-head strong{display:block;font-family:var(--font-display);font-size:var(--text-base)}
 .issue-card-head small{color:var(--text-muted)}
@@ -151,7 +141,6 @@ a.doc-row:hover{background:var(--surface-muted);text-decoration:none}
 .doc-top{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:var(--space-4);margin-bottom:var(--space-4)}
 .doc-title h1{overflow-wrap:anywhere}
 .doc-status{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;padding-top:20px}
-.doc-status a.badge:hover{text-decoration:none;background:var(--border)}
 .doc-grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:var(--space-5);align-items:start}
 .doc-grid.single{grid-template-columns:1fr}
 .original{position:sticky;top:var(--space-4)}
@@ -254,7 +243,47 @@ a.doc-row:hover{background:var(--surface-muted);text-decoration:none}
 /* Selector de fondo */
 .theme-picker{display:inline-flex;gap:2px;padding:3px;border-radius:var(--radius-pill);background:var(--surface-muted);border:1px solid var(--border);align-self:flex-start}
 .theme-picker button{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:0 12px;border-radius:var(--radius-pill);color:var(--text-muted);font-weight:600;font-size:var(--text-xs);transition:background var(--duration-fast) var(--ease-standard),color var(--duration-fast) var(--ease-standard)}
-.theme-picker button:hover{color:var(--foreground)}
 .theme-picker button.on{background:var(--surface);color:var(--accent-strong);box-shadow:var(--shadow-resting)}
 .theme-picker.compact{margin:0 12px 8px}
 .theme-picker.compact button{width:40px;justify-content:center;padding:0}
+
+/* Hover solo con ratón: en pantallas táctiles el hover se queda «pegado» al tocar. */
+@media (hover:hover) and (pointer:fine){
+ a:hover{text-decoration:underline;text-underline-offset:3px}
+ .btn:hover:not(:disabled){border-color:var(--border-strong);background:var(--surface-muted)}
+ .btn.primary:hover:not(:disabled){background:var(--accent-strong);border-color:var(--accent-strong)}
+ .btn.danger-btn:hover:not(:disabled){background:var(--danger-bg);border-color:transparent}
+ .link:hover:not(:disabled){text-decoration:underline;text-underline-offset:3px}
+ .icon:hover{background:var(--surface-muted);color:var(--danger)}
+ .nav-item:hover{background:var(--surface-muted);text-decoration:none;color:var(--foreground)}
+ .ghost:hover{background:var(--surface-muted);color:var(--foreground)}
+ a.doc-row:hover{background:var(--surface-muted);text-decoration:none}
+ .issue-card:hover{text-decoration:none;border-color:var(--border-strong)}
+ .doc-status a.badge:hover{text-decoration:none;background:var(--border)}
+ .theme-picker button:hover{color:var(--foreground)}
+}
+
+/* Respuesta al pulsar (emil-design-eng): todo lo pulsable confirma el toque. Sutil: se usa decenas de veces al día. */
+.chip,.icon,.ghost,.theme-picker button,.tabbar a,.nav-item{transition:transform 160ms var(--ease-out),background var(--duration-fast) var(--ease-standard),color var(--duration-fast) var(--ease-standard)}
+.chip:active,.icon:active,.ghost:active,.theme-picker button:active,.tabbar a:active,.nav-item:active{transform:scale(.97)}
+a.doc-row:active,.issue-card:active{background:var(--surface-muted)}
+
+/* Entradas sin salto: avisos, filas de subida y el formulario de motivo aparecen con una entrada corta.
+   Transiciones (no keyframes) para que se puedan interrumpir. */
+.alert,.uploads li,.accept{transition:opacity 200ms var(--ease-out),transform 200ms var(--ease-out)}
+@starting-style{.alert,.uploads li,.accept{opacity:0;transform:translateY(-4px)}}
+.match{transition:box-shadow 240ms var(--ease-standard)}
+
+/* Mantener pulsado para eliminar: evita borrados por un clic accidental. Pulsar es lento (decidir); soltar, rápido. */
+.hold{position:relative;overflow:hidden;isolation:isolate;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.hold-fill{position:absolute;inset:0;z-index:-1;background:var(--danger-bg);clip-path:inset(0 100% 0 0);transition:clip-path 200ms var(--ease-out)}
+.hold.holding .hold-fill{clip-path:inset(0 0 0 0);transition:clip-path 1200ms linear}
+.hold.holding{transform:scale(.97)}
+
+/* Movimiento reducido: menos y más suave, no cero. Se quitan desplazamientos y escalas; se mantienen fundidos. */
+@media (prefers-reduced-motion:reduce){
+ .btn:active,.chip:active,.icon:active,.ghost:active,.theme-picker button:active,.tabbar a:active,.nav-item:active,.hold.holding{transform:none}
+ @starting-style{.alert,.uploads li,.accept{transform:none}}
+}
+.hold-wrap{display:inline-flex;flex-direction:column;align-items:flex-end;gap:2px}
+.hold-tip{color:var(--text-muted);font-size:var(--text-xs)}

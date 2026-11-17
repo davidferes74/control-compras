@@ -2,7 +2,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {ArrowLeft,Check,CheckCircle2,AlertTriangle,Info,Loader2,Plus,Sparkles,Trash2,X,Eye,EyeOff,ExternalLink,RotateCcw,HelpCircle} from 'lucide-react';
 import {api,money,qty,date,parseDecimal,showDecimal,kindLabel,statusInfo,type FullDocument,type Kind,type InvoiceMatch,type DeliveryState } from './lib';
-import {Badge,StatusBadge,go} from './ui';
+import {Badge,StatusBadge,HoldButton,go} from './ui';
 
 type FormLine={code:string;description:string;quantity:string;unit:string;unitPrice:string;discountPct:string;amount:string;deliveryRef:string};
 type Form={kind:Kind;supplier:string;supplierTaxId:string;number:string;date:string;deliveryRefs:string;subtotal:string;tax:string;total:string;lines:FormLine[]};
@@ -29,7 +29,8 @@ export default function DocumentView({id,onChanged}:{id:string;onChanged:()=>Pro
   const r=await api<FullDocument>('/api/documents/'+id,{method:'PUT',body:JSON.stringify({document:input,confirm})});apply(r);await onChanged();
   setNotice(confirm?'Confirmado. Se ha conciliado y se archivará en Drive si hay carpeta elegida.':'Guardado.');});
  const reread=()=>run('read',async()=>{if(dirty&&!window.confirm('Se perderán los cambios sin guardar. ¿Volver a leer con IA?'))return;apply(await api<FullDocument>(`/api/documents/${id}/read`,{method:'POST'}));await onChanged();setNotice('Leído de nuevo con IA. Revisa los datos.');});
- const remove=()=>run('delete',async()=>{if(!window.confirm(doc.status==='draft'?'¿Descartar este borrador?':'¿Eliminar este documento confirmado? Las conciliaciones se recalcularán.'))return;await api('/api/documents/'+id,{method:'DELETE'});await onChanged();go(doc.status==='draft'?'bandeja':doc.kind==='delivery_note'?'albaranes':'facturas');});
+ // La confirmación es mantener pulsado el botón (HoldButton), no una ventana del navegador.
+ const remove=()=>run('delete',async()=>{await api('/api/documents/'+id,{method:'DELETE'});await onChanged();go(doc.status==='draft'?'bandeja':doc.kind==='delivery_note'?'albaranes':'facturas');});
  const decide=(key:string,reason:string|null)=>run('decide',async()=>{apply(await api<FullDocument>(`/api/documents/${id}/decisions`,{method:'POST',body:JSON.stringify({key,reason})}));await onChanged();});
  const fileUrl=doc.file?'/api/files/'+doc.file.id:null;
  return <div className="docview">
@@ -70,7 +71,7 @@ export default function DocumentView({id,onChanged}:{id:string;onChanged:()=>Pro
     <div className="actions">
      {doc.status==='draft'?<><button className="btn primary" disabled={!!busy} onClick={()=>save(true)}>{busy==='confirm'?<Loader2 size={16} className="spin"/>:<Check size={16}/>}Confirmar y conciliar</button><button className="btn" disabled={!!busy||!dirty} onClick={()=>save(false)}>Guardar borrador</button>{doc.file&&<button className="btn" disabled={!!busy} onClick={reread}>{busy==='read'?<Loader2 size={16} className="spin"/>:<Sparkles size={16}/>}{busy==='read'?'Leyendo…':'Leer con IA'}</button>}</>
       :<button className="btn primary" disabled={!!busy||!dirty} onClick={()=>save(false)}>{busy==='save'?<Loader2 size={16} className="spin"/>:<Check size={16}/>}Guardar cambios</button>}
-     <span className="spacer"/><button className="btn danger-btn" disabled={!!busy} onClick={remove}><Trash2 size={16}/>{doc.status==='draft'?'Descartar':'Eliminar'}</button></div>
+     <span className="spacer"/><HoldButton disabled={!!busy} onConfirm={remove} hint={doc.status==='draft'?'Mantén pulsado para descartar el borrador':'Mantén pulsado para eliminar; las conciliaciones se recalcularán'}><Trash2 size={16}/>{busy==='delete'?'Eliminando…':doc.status==='draft'?'Mantén para descartar':'Mantén para eliminar'}</HoldButton></div>
     {dirty&&<p className="muted small">Hay cambios sin guardar.{doc.status==='confirmed'?' Al guardar se recalcula la conciliación.':''}</p>}
    </section>
   </div>
