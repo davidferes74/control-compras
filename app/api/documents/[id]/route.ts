@@ -1,4 +1,14 @@
-import {NextRequest,NextResponse} from 'next/server';
-import {authorized} from '@/lib/auth';
-import {getPool,org} from '@/lib/server-store';
-export async function GET(req:NextRequest,{params}:{params:Promise<{id:string}>}){if(!authorized(req))return NextResponse.json({error:'Inicia sesión.'},{status:401});const {id}=await params;if(!/^[0-9a-f-]{36}$/.test(id))return new NextResponse(null,{status:404});try{const r=await getPool().query('SELECT original,mime FROM ria_documents WHERE id=$1 AND organization_id=$2',[id,org()]);if(!r.rows.length)return new NextResponse(null,{status:404});return new NextResponse(new Uint8Array(r.rows[0].original),{headers:{'Content-Type':r.rows[0].mime,'Content-Disposition':'attachment; filename="documento"','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}catch{return new NextResponse(null,{status:503});}}
+import {NextRequest,after} from 'next/server';
+import {z} from 'zod';
+import {handle,uuid} from '@/lib/api';
+import {getDocument,saveDocument,deleteDocument,documentInput} from '@/lib/documents';
+import {archiveDocument,refreshSheet} from '@/lib/archive';
+export const runtime='nodejs';export const maxDuration=60;
+type Ctx={params:Promise<{id:string}>};
+export async function GET(req:NextRequest,ctx:Ctx){return handle(req,async()=>getDocument(uuid((await ctx.params).id)));}
+export async function PUT(req:NextRequest,ctx:Ctx){return handle(req,async()=>{const id=uuid((await ctx.params).id);const body=z.object({document:documentInput,confirm:z.boolean()}).parse(await req.json());
+ const r=await saveDocument(id,body.document,body.confirm);
+ // Archivo en Drive y hoja de registro, después de responder (la persona no espera).
+ if(r.status==='confirmed')after(async()=>{if(r.newlyConfirmed)await archiveDocument(id);await refreshSheet();});
+ return getDocument(id);});}
+export async function DELETE(req:NextRequest,ctx:Ctx){return handle(req,async()=>{await deleteDocument(uuid((await ctx.params).id));after(async()=>{await refreshSheet();});return {ok:true};});}

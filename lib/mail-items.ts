@@ -1,5 +1,5 @@
 import {simpleParser} from 'mailparser';
-import {detectType} from './extraction';
+import {detectType} from "./extraction";
 export type MailItem={filename:string;mime:string|null;bytes:Buffer|null;status:string;detail:string};
 export const maxMessageBytes=6*1024*1024;
 export const excludedItem=(filename:string,detail:string):MailItem=>({filename,mime:null,bytes:null,status:'excluded',detail});

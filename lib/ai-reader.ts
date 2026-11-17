@@ -1,38 +1,50 @@
-import {createHash,randomUUID} from 'node:crypto';
+import Anthropic from '@anthropic-ai/sdk';
 import {getPool,org} from './server-store';
-// Lector común de documentos con Claude: caché por archivo idéntico, límite diario del piloto, original
-// privado en ria_documents y salida validada. Lo usan la lectura de albaranes/facturas y la de etiquetas.
-export const dailyLimit=10;
+import {extractionSchema,outputSchema,extractionSystem,extractionTask,type Extraction} from './extraction';
+// Lectura de un archivo guardado (cc_files) con Claude. El resultado se guarda en el propio archivo: un archivo
+// idéntico (mismo contenido) nunca se lee dos veces. Límite diario para controlar el gasto.
+export const dailyLimit=()=>Math.max(1,Number(process.env.AI_DAILY_LIMIT)||40);
+// Modelo configurable; por defecto el que ya usaba el proyecto de origen (económico para transcribir documentos).
 export const readerModel=()=>process.env.ANTHROPIC_MODEL||'claude-haiku-5-5';
 export class ReadError extends Error{constructor(message:string,public status:number){super(message);}}
-type Options<T>={bytes:Buffer;mime:string;name:string;scope:string;system:string;task:string;schema:object;maxTokens:number;parse:(raw:unknown)=>T};
-export async function readDocument<T>(o:Options<T>):Promise<{id:string;result:T;cached:boolean}>{
- if(!process.env.ANTHROPIC_API_KEY)throw new ReadError('Falta ANTHROPIC_API_KEY en Production. Guarda la variable y vuelve a desplegar.',503);
- const model=readerModel();
- // «scope» distingue tipo de lectura y versión del contrato: cambiar el esquema no reutiliza resultados antiguos.
- const digest=createHash('sha256').update(o.scope+':'+model+':').update(o.bytes).digest('hex');
- const id=randomUUID();let savedId=id;let reserved=false;
- try{
-  const client=await getPool().connect();
-  try{await client.query('BEGIN');await client.query('INSERT INTO ria_ai_daily(organization_id) VALUES($1) ON CONFLICT DO NOTHING',[org()]);await client.query('SELECT calls FROM ria_ai_daily WHERE organization_id=$1 AND day=CURRENT_DATE FOR UPDATE',[org()]);
-   const prior=await client.query('SELECT id,state,result,updated_at FROM ria_documents WHERE organization_id=$1 AND digest=$2',[org(),digest]);const old=prior.rows[0];
-   if(old?.state==='ready'){await client.query('COMMIT');return {id:old.id,result:o.parse(old.result),cached:true};}
-   if(old?.state==='pending'&&Date.now()-new Date(old.updated_at).getTime()<120000){await client.query('ROLLBACK');throw new ReadError('La lectura está en curso. Espera antes de reintentar.',409);}
-   const budget=await client.query('UPDATE ria_ai_daily SET calls=calls+1 WHERE organization_id=$1 AND day=CURRENT_DATE AND calls<$2 RETURNING calls',[org(),dailyLimit]);
-   if(!budget.rowCount){await client.query('ROLLBACK');throw new ReadError(`Límite de piloto alcanzado: ${dailyLimit} intentos de lectura al día. Puedes continuar manualmente.`,429);}
-   if(old){savedId=old.id;await client.query("UPDATE ria_documents SET state='pending',updated_at=now() WHERE id=$1",[savedId]);}else await client.query('INSERT INTO ria_documents(id,organization_id,digest,filename,mime,original,model) VALUES($1,$2,$3,$4,$5,$6,$7)',[id,org(),digest,o.name,o.mime,o.bytes,model]);
-   await client.query('COMMIT');reserved=true;
-  }catch(e){if(!(e instanceof ReadError))await client.query('ROLLBACK').catch(()=>{});throw e;}finally{client.release();}
-  const block={type:o.mime==='application/pdf'?'document':'image',source:{type:'base64',media_type:o.mime,data:o.bytes.toString('base64')}};
-  const response=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':process.env.ANTHROPIC_API_KEY,'anthropic-version':'2023-06-01'},signal:AbortSignal.timeout(45000),body:JSON.stringify({model,max_tokens:o.maxTokens,system:o.system,messages:[{role:'user',content:[block,{type:'text',text:o.task}]}],output_config:{format:{type:'json_schema',schema:o.schema}}})});
-  if(!response.ok)throw new ReadError(response.status===401?'Anthropic rechaza la API key. Revisa ANTHROPIC_API_KEY.':response.status===429?'Anthropic ha limitado las peticiones. Reintenta más tarde.':response.status===404?'El modelo no está disponible para esta cuenta. Revisa ANTHROPIC_MODEL.':'Anthropic no pudo procesar el archivo. Revisa saldo, modelo y documento.',502);
-  const body=await response.json();if(body.stop_reason!=='end_turn')throw new Error('Lectura incompleta o rechazada.');
-  const result=o.parse(JSON.parse(body.content.filter((c:{type:string})=>c.type==='text').map((c:{text:string})=>c.text).join('')));
-  await getPool().query("UPDATE ria_documents SET state='ready',result=$2,usage=$3,updated_at=now() WHERE id=$1",[savedId,JSON.stringify(result),JSON.stringify(body.usage)]);
-  return {id:savedId,result,cached:false};
- }catch(e){
-  if(reserved)await getPool().query("UPDATE ria_documents SET state='error',updated_at=now() WHERE id=$1",[savedId]).catch(()=>{});
-  if(e instanceof ReadError)throw e;
-  throw new ReadError('No se completó la lectura. El original guardado se conserva; puedes reintentar o continuar manualmente.',502);
- }
+let client:Anthropic|undefined;
+const anthropic=()=>client??=new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY,timeout:55_000,maxRetries:1});
+
+export async function readFile(fileId:string):Promise<Extraction>{
+ if(!process.env.ANTHROPIC_API_KEY)throw new ReadError('Falta ANTHROPIC_API_KEY en Vercel. Guárdala y vuelve a desplegar.',503);
+ const pool=getPool();
+ // Reserva: un solo intento a la vez por archivo y dentro del límite diario.
+ const c=await pool.connect();let file:{mime:string;bytes:Buffer};
+ try{await c.query('BEGIN');
+  const r=await c.query('SELECT mime,bytes,read_state,read_result,updated_at FROM cc_files WHERE id=$1 AND organization_id=$2 FOR UPDATE',[fileId,org()]);
+  if(!r.rowCount)throw new ReadError('Archivo no encontrado.',404);const row=r.rows[0];
+  if(row.read_state==='ready'){await c.query('COMMIT');return extractionSchema.parse(row.read_result);}
+  if(row.read_state==='reading'&&Date.now()-new Date(row.updated_at).getTime()<120_000)throw new ReadError('La lectura de este archivo ya está en curso.',409);
+  await c.query('INSERT INTO cc_ai_daily(organization_id) VALUES($1) ON CONFLICT DO NOTHING',[org()]);
+  const budget=await c.query('UPDATE cc_ai_daily SET calls=calls+1 WHERE organization_id=$1 AND day=CURRENT_DATE AND calls<$2 RETURNING calls',[org(),dailyLimit()]);
+  if(!budget.rowCount)throw new ReadError(`Se ha alcanzado el límite de ${dailyLimit()} lecturas con IA por hoy. Puedes completar el documento a mano o esperar a mañana.`,429);
+  await c.query("UPDATE cc_files SET read_state='reading',read_error=NULL,updated_at=now() WHERE id=$1",[fileId]);
+  await c.query('COMMIT');file=row;
+ }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e;}finally{c.release();}
+ const fail=async(message:string,status:number)=>{await pool.query("UPDATE cc_files SET read_state='error',read_error=$2,updated_at=now() WHERE id=$1",[fileId,message]);return new ReadError(message,status);};
+ const data=file.bytes.toString('base64');
+ const block:Anthropic.ContentBlockParam=file.mime==='application/pdf'
+  ?{type:'document',source:{type:'base64',media_type:'application/pdf',data}}
+  :{type:'image',source:{type:'base64',media_type:file.mime as 'image/jpeg'|'image/png'|'image/webp',data}};
+ let response:Anthropic.Message;
+ try{response=await anthropic().messages.create({model:readerModel(),max_tokens:16000,system:extractionSystem,output_config:{format:{type:'json_schema',schema:outputSchema}},messages:[{role:'user',content:[block,{type:'text',text:extractionTask}]}]});}
+ catch(e){
+  if(e instanceof Anthropic.AuthenticationError)throw await fail('Anthropic rechaza la API key. Revisa ANTHROPIC_API_KEY.',502);
+  if(e instanceof Anthropic.NotFoundError)throw await fail('El modelo configurado no está disponible para esta cuenta. Revisa ANTHROPIC_MODEL.',502);
+  if(e instanceof Anthropic.RateLimitError)throw await fail('Anthropic ha limitado las peticiones. Reintenta en unos minutos.',429);
+  if(e instanceof Anthropic.BadRequestError)throw await fail('Anthropic no pudo procesar el archivo (¿protegido, dañado o demasiado grande?).',422);
+  if(e instanceof Anthropic.APIError)throw await fail('Anthropic no está disponible ahora. Reintenta más tarde.',502);
+  throw await fail('No se pudo contactar con Anthropic. Reintenta más tarde.',502);}
+ if(response.stop_reason==='refusal')throw await fail('El modelo ha rechazado leer este archivo. Complétalo a mano.',422);
+ if(response.stop_reason!=='end_turn')throw await fail('La lectura quedó incompleta (documento demasiado largo). Prueba a dividir el PDF.',422);
+ let result:Extraction;
+ try{result=extractionSchema.parse(JSON.parse(response.content.filter(b=>b.type==='text').map(b=>b.text).join('')));}
+ catch{throw await fail('La lectura no tiene el formato esperado. Reintenta o complétalo a mano.',502);}
+ await pool.query("UPDATE cc_files SET read_state='ready',read_result=$2,model=$3,usage=$4,read_error=NULL,updated_at=now() WHERE id=$1",[fileId,JSON.stringify(result),readerModel(),JSON.stringify(response.usage)]);
+ return result;
 }

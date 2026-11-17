@@ -1,53 +1,38 @@
-# Importación en un nuevo repositorio
+# Control de compras · Sentidiño
 
-Empieza por [IMPORTAR-NUEVO-REPOSITORIO.md](IMPORTAR-NUEVO-REPOSITORIO.md). Las referencias siguientes a GitHub y Vercel describen el proyecto original.
+App externa e independiente que **concilia facturas de proveedor con albaranes**: comprueba que lo facturado coincide con lo entregado y señala cada diferencia.
 
-# Recepciones-IA
+## Cómo funciona
 
-Prototipo funcional H1 · 16 de noviembre de 2026
+1. **Entrada**: PDF o fotos subidos a mano, o adjuntos de las etiquetas de Gmail elegidas.
+2. **Lectura con IA** (Claude): proveedor, NIF, número, fecha, albaranes citados, líneas (código, descripción, cantidad, unidad, precio, descuento, importe) y totales. Queda como *borrador*.
+3. **Revisión**: una persona corrige lo leído y **confirma**. Nada cuenta para la conciliación sin confirmar.
+4. **Conciliación** (`lib/matching.ts`, reglas exactas con aritmética decimal, sin IA):
+   - Factura ↔ albaranes que cita (o, si no cita ninguno, propuestos por proveedor y fecha → «Revisar»).
+   - Líneas por código del proveedor, luego descripción exacta, luego descripción parecida (marcada para revisar).
+   - Detecta: cantidad facturada de más, facturado sin albarán, albarán citado inexistente, albarán ya facturado, precio o descuento distinto (si el albarán está valorado), importe de línea mal calculado, totales/IVA que no cuadran, y lo entregado sin facturar.
+   - Estados: **Conforme**, **Con diferencias**, **Falta albarán**, **Revisar**. Una diferencia solo se acepta con motivo; si cambian los datos, la aceptación deja de valer.
+5. **Archivo en Google Drive** (carpeta que elige el usuario): `Carpeta/Proveedor/AAAA-MM/fecha Tipo número.pdf` y la hoja «Registro control de compras» (pestañas *Documentos* y *Líneas*).
 
-**Estado: prototipo implementado; integraciones reales y validación del despliegue pendientes. Ver docs/ESTADO.md.**
-Este repositorio es la fuente de contexto para construir la app. No presupongas que dispones de la conversación original.
+Los abonos se registran y archivan, pero se revisan a mano.
 
-## Objetivo
+## Variables de entorno (Vercel)
 
-App independiente de cualquier ERP para comprobar lo que llega físicamente al almacén frente al albarán del proveedor y conciliar posteriormente albaranes/recepciones con facturas de compra recibidas por correo. Prioridad móvil, tablet y PDA; manejo sencillo; trazabilidad y coste de IA controlado. Volumen inicial comunicado: unos 100 documentos al mes, sin asumir 100 páginas ni 100 escaneos.
+Ver `.env.example`. Mínimas: `DATABASE_URL`, `APP_ACCESS_PASSWORD`, `SESSION_SECRET`, `ANTHROPIC_API_KEY`. Para Google: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_API_KEY`, `TOKEN_ENCRYPTION_KEY`. Tarea diaria: `CRON_SECRET`.
 
-## Lectura obligatoria
+### Google Cloud
 
-1. [AGENTS.md](AGENTS.md): instrucciones para el agente de desarrollo.
-2. [Especificación funcional](docs/01-producto.md): alcance, requisitos y límites.
-3. [Pantallas y experiencia móvil](docs/02-diseno.md).
-4. [Lectores y configuración de PDA](docs/03-lectores.md).
-5. [Lectura documental y conciliación](docs/04-lectura-conciliacion.md).
-6. [Arquitectura y datos](docs/05-arquitectura-datos.md).
-7. [Integraciones, seguridad y operaciones](docs/06-integraciones.md).
-8. [Pruebas y aceptación](docs/07-pruebas.md).
-9. [Plan de implementación y pendientes](docs/08-plan.md).
-10. [Prompt para comenzar en Codex](CODEX_START.md).
+1. Activar **Gmail API**, **Google Drive API**, **Google Sheets API** y **Google Picker API**.
+2. Pantalla de consentimiento OAuth con los permisos `gmail.readonly` y `drive.file` (la app solo ve la carpeta elegida y lo que ella crea).
+3. Cliente OAuth «Aplicación web» con la URI de redirección `https://<dominio>/api/google/callback` (por defecto `https://control-compras-sentidino.vercel.app/api/google/callback`; otro dominio → `APP_URL`).
+4. Clave de API restringida a Picker API y al dominio de la app (`GOOGLE_API_KEY`).
 
-Los requisitos explícitos del usuario prevalecen. Las propuestas técnicas se identifican como tales; documentar alternativas justificadas sin eliminar funcionalidad acordada.
+## Desarrollo
 
-## Destinos
+```bash
+npm ci
+npm test          # pruebas del motor de conciliación y contratos
+npm run build     # aplica migraciones si hay DATABASE_URL
+```
 
-- Nombre comercial: **Recepciones-IA**.
-- Repositorio: **davidferes74/Recepciones-IA**, privado.
-- Proyecto Vercel propuesto: **recepciones-ia**, equipo Sentidiño.
-- Sin dependencia de Odoo. No crear módulos Odoo ni exigir conexión a ERP.
-- UI en español; fechas dd/mm/aaaa; zona de presentación Europe/Madrid; instantes persistidos en UTC.
-
-## Inicio
-
-Abrir este repositorio en Codex y pegar el contenido de CODEX_START.md.
-Instalar con `npm ci`; iniciar con `npm run dev`. Validar con `npm test`, `npm run typecheck` y `npm run build`.
-No hay credenciales, fotos reales, facturas reales ni datos de proveedores en este paquete.
-
-## Vercel y Neon
-
-El proyecto incluye vercel.json con framework Next.js. La compilación ejecuta migraciones aditivas si existe DATABASE_URL. Sin ella permite probar la demo local.
-Configurar exclusivamente en Vercel: DATABASE_URL (aportada por Neon), APP_ACCESS_PASSWORD (contraseña del piloto), SESSION_SECRET (secreto aleatorio de al menos 32 caracteres), ORGANIZATION_ID opcional. No compartir valores por chat ni guardarlos en Git. Volver a desplegar tras cambiar variables.
-El acceso de piloto es de un administrador único. No introducir documentación real hasta completar permisos, controles de acceso y pruebas de persistencia. Preview y producción deben usar bases separadas.
-
-## Prueba de demostración
-
-Abrir Lectores y PDA, probar código 8412345678905 con ese mismo código esperado, indicar dispositivo y validar perfil. Abrir ALB-2026-0148: CAJA-ARROZ añade 12 unidades y cada 8423456789015 añade una unidad de aceite (6 esperadas). Confirmar recepción y abrir factura F-2026-0312: las cantidades se respaldan entre dos albaranes. Precio no comprobado. La demo se guarda solo en este navegador.
+Estructura: `lib/matching.ts` (conciliación), `lib/documents.ts` (datos), `lib/ai-reader.ts` + `lib/extraction.ts` (lectura), `lib/google.ts`, `lib/gmail-capture.ts`, `lib/archive.ts` (Google), `app/api/*` (rutas), `components/*` (interfaz), `migrations/*` (esquema).
