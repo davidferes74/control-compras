@@ -382,3 +382,40 @@ button,[role="button"],[role="radio"],.chip,.nav-item,.tabbar a,.ghost,.sheet-gr
  .main{--pad-x:max(16px,env(safe-area-inset-left,0px));--pad-top:calc(var(--space-5) + env(safe-area-inset-top,0px));padding-top:var(--pad-top);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
  .tabbar{padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
 }
+
+/* ============================================================
+   Google Drive: conexión guiada y ayuda paso a paso (portado de Recepciones-IA)
+   ============================================================ */
+.modal{border:0;padding:0;width:min(560px,calc(100vw - 32px));max-height:calc(100dvh - 48px);border-radius:var(--radius-surface);background:var(--surface);color:var(--foreground);box-shadow:var(--shadow-floating);transition:opacity 200ms var(--ease-out),transform 200ms var(--ease-out)}
+@starting-style{.modal[open]{opacity:0;transform:scale(.97)}}
+.modal::backdrop{background:rgb(5 12 20 / .38)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-5) var(--space-6) var(--space-3)}
+.modal-head .icon{font-size:22px;line-height:1;color:var(--text-muted)}
+.modal-body{padding:0 var(--space-6) var(--space-6);overflow:auto}
+.form-stack{display:flex;flex-direction:column;gap:var(--space-4)}
+.form-stack>.btn{width:100%}
+.wizard-card{display:grid;grid-template-columns:auto 1fr;gap:12px;padding:14px 16px;border-radius:var(--radius-control);border:1px solid var(--border);background:var(--surface-muted)}
+.wizard-card.ok{background:var(--success-bg);border-color:transparent}.wizard-card.ok>svg{color:var(--success)}
+.wizard-card.warn{background:var(--warning-bg);border-color:var(--warning-border)}.wizard-card.warn>svg{color:var(--warning)}
+.wizard-card strong{display:block}
+.drive-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;color:var(--text-secondary)}
+.drive-tree{display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:var(--radius-control);padding:12px 14px;background:var(--surface-tint);font-size:.84rem;overflow:hidden}
+.drive-tree span{display:flex;align-items:center;gap:8px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.drive-tree svg{color:var(--accent);flex:none}
+.drive-tree .l1{padding-left:20px}.drive-tree .l2{padding-left:40px}
+.drive-tree .l3{padding-left:66px;font-weight:400;color:var(--text-secondary);font-size:.78rem;display:block}
+.drive-tree .sheet-row svg{color:var(--success)}
+.ok-icon{vertical-align:-3px;color:var(--success)}
+.drive-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.drive-summary div{display:flex;flex-direction:column;align-items:center;padding:10px;border-radius:var(--radius-control);background:var(--surface-muted)}
+.drive-summary strong{font-family:var(--font-display);font-size:var(--text-xl);font-variant-numeric:tabular-nums}
+.drive-summary span{font-size:var(--text-xs);color:var(--text-muted)}
+.row-actions.spread{justify-content:space-between;margin:0}
+.sub-head{font-size:var(--text-base);margin-top:var(--space-2)}
+/* Ayuda paso a paso (Google Cloud) */
+.help-steps{margin:0;padding:0;list-style:none;counter-reset:help;display:flex;flex-direction:column;gap:12px}
+.help-steps li{counter-increment:help;position:relative;padding-left:44px;min-height:30px;line-height:1.5}
+.help-steps li::before{content:counter(help);position:absolute;left:0;top:-2px;width:30px;height:30px;display:grid;place-items:center;border-radius:50%;background:var(--accent-subtle);color:var(--accent-strong);font-family:var(--font-display);font-weight:600}
+.help-steps .btn{display:flex;width:fit-content;margin-top:8px}
+.help-url{display:block;margin-top:6px;font-size:.74rem;color:var(--text-muted);overflow-wrap:anywhere;user-select:all}
+@media (prefers-reduced-motion:reduce){@starting-style{.modal[open]{transform:none}}}

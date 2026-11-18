@@ -25,4 +25,11 @@ export function HoldButton({onConfirm,disabled,children,hint}:{onConfirm:()=>voi
   onPointerDown={e=>{if(e.button===0)start();}} onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop} onContextMenu={e=>e.preventDefault()}
   onKeyDown={e=>{if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();start();}}} onKeyUp={e=>{if(e.key===' '||e.key==='Enter')stop();}}>
   <span className="hold-fill" aria-hidden="true"/>{children}</button>{tip&&!holding&&<small className="hold-tip" role="status">{hint}</small>}</span>;}
+/** Ventana modal nativa (<dialog>): foco atrapado, Escape y clic fuera cierran. */
+export function Modal({title,onClose,children}:{title:string;onClose:()=>void;children:React.ReactNode}){
+ const ref=useRef<HTMLDialogElement>(null);
+ useEffect(()=>{const el=ref.current;if(el&&!el.open)el.showModal();return()=>el?.close();},[]);
+ return <dialog ref={ref} className="modal" aria-label={title} onCancel={e=>{e.preventDefault();onClose();}} onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+  <div className="modal-head"><h2>{title}</h2><button type="button" className="icon" onClick={onClose} aria-label="Cerrar ventana">×</button></div>
+  <div className="modal-body">{children}</div></dialog>;}
 export function Empty({title,text}:{title:string;text:string}){return <div className="empty"><strong>{title}</strong><p>{text}</p></div>;}
