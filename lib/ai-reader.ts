@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import {getPool,org} from './server-store';
-import {extractionSchema,outputSchema,extractionSystem,extractionTask,type Extraction} from './extraction';
+import {extractionSchema,outputSchema,extractionSystem,extractionTask,isEInvoice,type Extraction} from './extraction';
 // Lectura de un archivo guardado (cc_files) con Claude. El resultado se guarda en el propio archivo: un archivo
 // idéntico (mismo contenido) nunca se lee dos veces. Límite diario para controlar el gasto.
 export const dailyLimit=()=>Math.max(1,Number(process.env.AI_DAILY_LIMIT)||40);
@@ -28,7 +28,8 @@ export async function readFile(fileId:string):Promise<Extraction>{
  }catch(e){await c.query('ROLLBACK').catch(()=>{});throw e;}finally{c.release();}
  const fail=async(message:string,status:number)=>{await pool.query("UPDATE cc_files SET read_state='error',read_error=$2,updated_at=now() WHERE id=$1",[fileId,message]);return new ReadError(message,status);};
  const data=file.bytes.toString('base64');
- const block:Anthropic.ContentBlockParam=file.mime==='application/pdf'
+ // Las facturas electrónicas (XML, UBL, EDIFACT) se envían como documento de texto; PDF e imágenes, tal cual.
+ const block:Anthropic.ContentBlockParam=isEInvoice(file.mime)?{type:'document',source:{type:'text',media_type:'text/plain',data:file.bytes.toString('utf8').replace(/^﻿/,'')}}:file.mime==='application/pdf'
   ?{type:'document',source:{type:'base64',media_type:'application/pdf',data}}
   :{type:'image',source:{type:'base64',media_type:file.mime as 'image/jpeg'|'image/png'|'image/webp',data}};
  let response:Anthropic.Message;
