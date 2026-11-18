@@ -26,7 +26,10 @@ Ver `.env.example`. Mínimas: `DATABASE_URL`, `APP_ACCESS_PASSWORD`, `SESSION_SE
 2. Pantalla de consentimiento OAuth con los permisos `gmail.readonly` y `drive.file`. Mientras esté en pruebas, añadir las cuentas en *Público → Usuarios de prueba*.
 3. Cliente OAuth «Aplicación web» con la URI de redirección `https://<dominio>/api/google/callback` (por defecto `https://control-compras-sentidino.vercel.app/api/google/callback`; otro dominio → `APP_URL`). Sirve para Gmail y para Drive.
 
-Gmail y Drive se autorizan por separado desde Ajustes. Con `drive.file` la app solo ve la carpeta que crea y lo que guarda en ella.
+Gmail y Drive se autorizan por separado desde Ajustes.
+
+**Gmail desde la app** (mismo proceso que en Recepciones-IA): Conectar Gmail → la app verifica la cuenta con Gmail y la guarda *pausada* → Configurar (nombre, etiquetas, fecha, filtros de remitente y asunto, lectura con IA) → Habilitar captura → Comprobar ahora. Si Google rechaza la conexión, la app dice el motivo y, si falta un ajuste en Google Cloud, muestra los pasos.
+ Con `drive.file` la app solo ve la carpeta que crea y lo que guarda en ella.
 
 ## Desarrollo
 

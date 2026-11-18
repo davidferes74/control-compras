@@ -419,3 +419,6 @@ button,[role="button"],[role="radio"],.chip,.nav-item,.tabbar a,.ghost,.sheet-gr
 .help-steps .btn{display:flex;width:fit-content;margin-top:8px}
 .help-url{display:block;margin-top:6px;font-size:.74rem;color:var(--text-muted);overflow-wrap:anywhere;user-select:all}
 @media (prefers-reduced-motion:reduce){@starting-style{.modal[open]{transform:none}}}
+.check-group{border:0;padding:0;margin:0;min-width:0}
+.check-group legend{font-size:var(--text-xs);font-weight:600;color:var(--text-secondary);padding:0;margin-bottom:6px}
+.modal .label-list{max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-control);padding:4px 12px;grid-template-columns:1fr}

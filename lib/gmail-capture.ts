@@ -1,20 +1,28 @@
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
-import {getPool,org,getSetting,audit} from './server-store';
-import {accessToken,gmail,GoogleError} from './google';
+import {getPool,org,getSetting,setSetting,audit} from './server-store';
+import {accessToken,gmail,connection,GoogleError} from './google';
 import {readMessage,maxMessageBytes} from './mail-items';
 import {storeFile,draftFromFile} from './documents';
 // Captura de adjuntos desde Gmail: revisa las etiquetas elegidas, guarda cada PDF/imagen como archivo y crea
 // un borrador (leído con IA si está activado). Cada correo se procesa una sola vez (cc_gmail_seen).
-export const gmailSettingSchema=z.object({labels:z.array(z.object({id:z.string().min(1).max(200),name:z.string().max(200)})).max(20),since:z.iso.date(),autoRead:z.boolean()});
+// Configuración como en Recepciones-IA: nombre, etiquetas, fecha inicial y filtros «contiene» de remitente y asunto.
+export const gmailSettingSchema=z.object({name:z.string().trim().min(1).max(100).default('Facturas Gmail'),labels:z.array(z.object({id:z.string().min(1).max(200),name:z.string().max(200)})).max(20),since:z.iso.date(),sender:z.string().trim().max(254).default(''),subject:z.string().trim().max(150).default(''),autoRead:z.boolean()});
 export type GmailSetting=z.infer<typeof gmailSettingSchema>;
-export const gmailSetting=()=>getSetting<GmailSetting>('gmail');
+export const gmailSetting=async()=>{const s=await getSetting<Partial<GmailSetting>>('gmail');return s?gmailSettingSchema.parse(s):null;};
+/** ¿Pasa el correo los filtros de remitente y asunto? Comparación «contiene», sin distinguir mayúsculas. */
+export const passesFilters=(s:Pick<GmailSetting,'sender'|'subject'>,from:string,subject:string)=>(!s.sender||from.toLowerCase().includes(s.sender.toLowerCase()))&&(!s.subject||subject.toLowerCase().includes(s.subject.toLowerCase()));
+/** Guarda la configuración: valida las etiquetas contra Gmail, deja la captura pausada y vuelve a evaluar los correos excluidos por filtros. */
+export async function saveGmailSetting(input:unknown){const s=gmailSettingSchema.parse(input);const valid=await gmailLabels();const unknown=s.labels.filter(l=>!valid.some(v=>v.id===l.id));if(unknown.length)throw new GoogleError('Etiqueta no válida: '+unknown.map(l=>l.name||l.id).join(', ')+'.',422);
+ const claim=await getPool().query('UPDATE cc_google SET paused=true WHERE organization_id=$1 AND (lease_until IS NULL OR lease_until<now()) RETURNING 1',[org()]);if(!claim.rowCount)throw new GoogleError('Cuenta ocupada o no disponible. Reintenta en un momento.',409);
+ await setSetting('gmail',s);await getPool().query("DELETE FROM cc_gmail_seen WHERE organization_id=$1 AND outcome='excluido por filtros'",[org()]);return s;}
 export async function gmailLabels(){const data=await gmail('/labels');return z.array(z.object({id:z.string(),name:z.string(),type:z.string().optional()})).parse(data.labels||[]).filter(l=>l.type==='user'||['INBOX','IMPORTANT','STARRED'].includes(l.id)).sort((a,b)=>a.name.localeCompare(b.name,'es'));}
 
 export async function captureGmail(budgetMs=40_000){
- const setting=await gmailSetting();if(!setting?.labels.length)throw new GoogleError('Elige en Ajustes qué etiquetas de Gmail se revisan.',409);
+ const setting=await gmailSetting();if(!setting?.labels.length)throw new GoogleError('Configura primero las etiquetas de Gmail que se revisan.',409);
+ if((await connection())?.paused)throw new GoogleError('La captura está pausada. Habilítala en Ajustes → Gmail.',409);
  const pool=getPool(),lease=randomUUID(),end=Date.now()+budgetMs;
- const claim=await pool.query("UPDATE cc_google SET lease_until=now()+interval '2 minutes',lease_token=$2 WHERE organization_id=$1 AND (lease_until IS NULL OR lease_until<now()) RETURNING 1",[org(),lease]);
+ const claim=await pool.query("UPDATE cc_google SET lease_until=now()+interval '2 minutes',lease_token=$2 WHERE organization_id=$1 AND paused=false AND (lease_until IS NULL OR lease_until<now()) RETURNING 1",[org(),lease]);
  if(!claim.rowCount)throw new GoogleError('Ya hay una revisión del correo en curso.',409);
  const summary={messages:0,files:0,drafts:0,skipped:0,more:false};
  try{const token=await accessToken();const after=Math.floor(Date.parse(setting.since+'T00:00:00Z')/1000);
@@ -25,7 +33,8 @@ export async function captureGmail(budgetMs=40_000){
     for(const id of ids){if(seen.has(id))continue;if(Date.now()>end){summary.more=true;break outer;}
      const meta=await gmail(`/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,token);const header=(h:string)=>String((meta.payload?.headers||[]).find((x:{name:string})=>x.name.toLowerCase()===h)?.value||'').slice(0,300);
      let outcome='sin adjuntos válidos';
-     if(!meta.sizeEstimate||meta.sizeEstimate>maxMessageBytes)outcome='correo mayor de 6 MB';
+     if(!passesFilters(setting,header('from'),header('subject'))){outcome='excluido por filtros';summary.skipped++;}
+     else if(!meta.sizeEstimate||meta.sizeEstimate>maxMessageBytes)outcome='correo mayor de 6 MB';
      else{const items=await readMessage(async()=>{const raw=await gmail(`/messages/${id}?format=raw`,token);return typeof raw.raw==='string'?Buffer.from(raw.raw,'base64url'):null;},e=>e instanceof GoogleError);
       let saved=0;for(const it of items){if(it.status!=='received'||!it.bytes||!it.mime)continue;const f=await storeFile({bytes:it.bytes,filename:it.filename,mime:it.mime,source:'gmail',sourceRef:id,sender:header('from'),subject:header('subject'),receivedAt:meta.internalDate?new Date(Number(meta.internalDate)):null});summary.files++;saved++;
        if(!f.duplicate){await draftFromFile(f.id,{read:false});summary.drafts++;}}

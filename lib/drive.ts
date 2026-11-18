@@ -1,7 +1,8 @@
 import {z} from 'zod';
 import {getPool,org} from './server-store';
 import {seal,unseal,encryptionReady} from './crypto';
-import {googleReady,type Tokens} from './google';
+import {googleReady,forbiddenKind,type Tokens} from './google';
+export {forbiddenKind};
 import {safePart} from './drive-names';
 // Archivo de originales en Google Drive (portado de Recepciones-IA). Permiso mínimo «drive.file»: la app solo
 // ve y toca la carpeta y los archivos que ella misma crea, nunca el resto del Drive del usuario.
@@ -13,8 +14,6 @@ export const defaultFolderName='Control de compras';
 type StoredTokens={access_token:string;refresh_token:string;expires_at:number};
 export type DriveRow={email:string|null;secret:string|null;folder_id:string|null;folder_name:string|null;sheet_id:string|null;folders:Record<string,string>;last_error:string|null;last_archive:Date|null};
 export class DriveError extends Error{constructor(message:string,public kind:'auth'|'folder'|'api'|'denied'|'other'='other'){super(message);}}
-/** Motivo de un 403 de Google: API de Drive sin activar en el proyecto, o permiso insuficiente. */
-export function forbiddenKind(body:unknown):'api'|'denied'{const e=(body as {error?:{message?:string;status?:string;errors?:{reason?:string}[];details?:{reason?:string}[]}}|null)?.error;const reasons=[...(e?.errors||[]),...(e?.details||[])].map(x=>String(x.reason||'')).join(' ')+' '+String(e?.message||'');return /accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled|it is disabled/i.test(reasons)?'api':'denied';}
 export async function driveRow(){const r=await getPool().query('SELECT email,secret,folder_id,folder_name,sheet_id,folders,last_error,last_archive FROM cc_drive WHERE organization_id=$1',[org()]);return r.rows[0] as DriveRow|undefined;}
 export const updateDrive=(fields:Partial<Record<'sheet_id'|'folders'|'last_error'|'last_archive',unknown>>)=>{const keys=Object.keys(fields);return getPool().query(`UPDATE cc_drive SET ${keys.map((k,i)=>`${k}=$${i+2}`).join(',')},updated_at=now() WHERE organization_id=$1`,[org(),...keys.map(k=>k==='folders'?JSON.stringify(fields[k as 'folders']):fields[k as keyof typeof fields])]);};
 export const driveConnected=(r:DriveRow|undefined):r is DriveRow&{secret:string;folder_id:string}=>Boolean(r?.secret&&r.folder_id);

@@ -2,7 +2,7 @@ import {NextRequest,NextResponse,after} from 'next/server';
 import {z} from 'zod';
 import {authorized} from '@/lib/auth';
 import {getPool,org,audit} from '@/lib/server-store';
-import {hashState,exchangeCode,gmail,saveConnection,appUrl,driveScope,OAuthError} from '@/lib/google';
+import {hashState,exchangeCode,gmail,saveConnection,appUrl,driveScope,OAuthError,GoogleError} from '@/lib/google';
 import {connectDrive,folderNameSchema,DriveError} from '@/lib/drive';
 import {archivePending,refreshSheet} from '@/lib/archive';
 export const runtime='nodejs';export const maxDuration=60;
@@ -19,5 +19,5 @@ export async function GET(req:NextRequest){if(!authorized(req))return finish('se
  }catch(e){
   // Motivo concreto para el usuario y para los registros (sin datos privados ni respuestas de Google).
   const code=(e as {code?:string})?.code;
-  const reason=e instanceof OAuthError?e.kind:e instanceof DriveError?e.kind:code==='42P01'||code==='42703'?'database':'failed';
-  console.error('[google callback]',param,reason,e instanceof Error?e.name:'');return finish(param==='drive'?reason:reason==='scope'?'scopes':'failed',param);}}
+  const reason=e instanceof OAuthError?e.kind:e instanceof DriveError?e.kind:e instanceof GoogleError&&e.kind!=='other'?e.kind:code==='42P01'||code==='42703'?'database':'failed';
+  console.error('[google callback]',param,reason,e instanceof Error?e.name:'');return finish(reason,param);}}
