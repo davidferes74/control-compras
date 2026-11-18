@@ -84,12 +84,16 @@ export async function clasificarDocumento(id:string,opts:{fresh?:boolean}={}):Pr
   await audit('classify',`Clasificado como ${d.estado}${dup?' (duplicado)':''}: ${x.tipo_documento||'documento'} ${input.number||'sin número'}${input.supplier?' de '+input.supplier:''}. ${d.motivo}`,id,c);
   return {estado:d.estado,confirmed,duplicate:Boolean(dup)};});}
 
-/** Clasifica los documentos pendientes mientras quede tiempo. Se detiene si la IA no está disponible (límite o clave). */
-export async function clasificarPendientes(until:number){
- const r=await getPool().query("SELECT id FROM cc_documents WHERE organization_id=$1 AND class_state='PENDIENTE_CLASIFICACION' AND origin='correo' ORDER BY created_at LIMIT 30",[org()]);
+/**
+ * Clasifica los documentos pendientes mientras quede tiempo. Se detiene si la IA no está disponible (límite o clave).
+ * Con «anteriores», pasa por el clasificador los borradores del correo capturados antes de que existiera (quedaron
+ * como DUDOSO al migrar): no se ocultan ni se borran; si la IA no está disponible siguen como están.
+ */
+export async function clasificarPendientes(until:number,anteriores=false){
+ const r=await getPool().query(anteriores?"SELECT id FROM cc_documents WHERE organization_id=$1 AND class_state='DUDOSO' AND class_by='anterior' AND status='draft' AND origin='correo' ORDER BY created_at LIMIT 30":"SELECT id FROM cc_documents WHERE organization_id=$1 AND class_state='PENDIENTE_CLASIFICACION' AND origin='correo' ORDER BY created_at LIMIT 30",[org()]);
  const out={classified:0,facturas:0,albaranes:0,dudosos:0,descartados:0,pending:r.rowCount||0,blocked:null as string|null};
  for(const row of r.rows){if(Date.now()>until)break;
-  const res=await clasificarDocumento(row.id).catch(e=>({estado:'PENDIENTE_CLASIFICACION' as Estado,blocked:e instanceof Error?e.message:'Error al clasificar.'}));
+  const res=await clasificarDocumento(row.id).catch(e=>({estado:(anteriores?'DUDOSO':'PENDIENTE_CLASIFICACION') as Estado,blocked:e instanceof Error?e.message:'Error al clasificar.'}));
   if(res.blocked){out.blocked=res.blocked;break;}
   out.classified++;out.pending--;if(res.estado==='FACTURA')out.facturas++;else if(res.estado==='ALBARAN')out.albaranes++;else if(res.estado==='DUDOSO')out.dudosos++;else if(res.estado==='DESCARTADO')out.descartados++;
   if('split' in res&&res.split)out.pending+=res.split;}
