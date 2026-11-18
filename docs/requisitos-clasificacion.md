@@ -9,6 +9,17 @@
 > código actual. Quien lo implemente presenta primero un plan, espera el visto bueno y actualiza este estado y
 > el resumen de `AGENTS.md` al terminar cada fase.
 
+## Decisiones del propietario (18-11-2026)
+
+Aclaran el texto original, que sigue debajo sin cambios. Si hay contradicción, manda esta lista.
+
+1. Una factura o un albarán que la IA da por verificado (`FACTURA` o `ALBARAN` con confianza por encima del umbral) **concilia solo**, sin pulsar Validar. `DUDOSO`, `DESCARTADO` y pendientes no concilian nunca sin confirmación de un usuario.
+2. Los archivos **subidos a mano no pasan por el clasificador**. La entrada única de R2 se aplica a los adjuntos de correo; la subida manual es el único otro camino permitido y sigue como hasta ahora (lectura con IA y confirmación de la persona).
+3. Si no se puede clasificar (límite diario de lecturas agotado o clave no válida), los documentos quedan pendientes, fuera de los listados, y la app muestra un aviso con el contador «N documentos pendientes de clasificar».
+4. Abonos y facturas rectificativas se clasifican como `FACTURA` con su tipo indicado, y la app los sigue tratando como abono en la conciliación.
+
+Avance: fase 1 (R1, solo correos de entrada) implementada en `lib/gmail-capture.ts` con pruebas en `tests/correo-entrada.test.ts`. El resto, pendiente.
+
 # TAREA: Filtro de correos entrantes + clasificación obligatoria de documentos con IA
 
 Trabajas en la app de Sentidiño Soluciones que captura correos con adjuntos,
