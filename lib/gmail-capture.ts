@@ -9,6 +9,7 @@ import {storeFile,draftFromFile} from './documents';
 // Configuración como en Recepciones-IA: nombre, etiquetas, fecha inicial y filtros «contiene» de remitente y asunto.
 export const gmailSettingSchema=z.object({name:z.string().trim().min(1).max(100).default('Facturas Gmail'),labels:z.array(z.object({id:z.string().min(1).max(200),name:z.string().max(200)})).max(20),since:z.iso.date(),sender:z.string().trim().max(254).default(''),subject:z.string().trim().max(150).default(''),autoRead:z.boolean()});
 export type GmailSetting=z.infer<typeof gmailSettingSchema>;
+export const defaultGmailSetting=():GmailSetting=>gmailSettingSchema.parse({labels:[],since:new Date(Date.now()-30*864e5).toISOString().slice(0,10),autoRead:true});
 export const gmailSetting=async()=>{const s=await getSetting<Partial<GmailSetting>>('gmail');return s?gmailSettingSchema.parse(s):null;};
 /** ¿Pasa el correo los filtros de remitente y asunto? Comparación «contiene», sin distinguir mayúsculas. */
 export const passesFilters=(s:Pick<GmailSetting,'sender'|'subject'>,from:string,subject:string)=>(!s.sender||from.toLowerCase().includes(s.sender.toLowerCase()))&&(!s.subject||subject.toLowerCase().includes(s.subject.toLowerCase()));
@@ -19,15 +20,16 @@ export async function saveGmailSetting(input:unknown){const s=gmailSettingSchema
 export async function gmailLabels(){const data=await gmail('/labels');return z.array(z.object({id:z.string(),name:z.string(),type:z.string().optional()})).parse(data.labels||[]).filter(l=>l.type==='user'||['INBOX','IMPORTANT','STARRED'].includes(l.id)).sort((a,b)=>a.name.localeCompare(b.name,'es'));}
 
 export async function captureGmail(budgetMs=40_000){
- const setting=await gmailSetting();if(!setting?.labels.length)throw new GoogleError('Configura primero las etiquetas de Gmail que se revisan.',409);
+ const setting=await gmailSetting()||defaultGmailSetting();
  if((await connection())?.paused)throw new GoogleError('La captura está pausada. Habilítala en Ajustes → Gmail.',409);
  const pool=getPool(),lease=randomUUID(),end=Date.now()+budgetMs;
  const claim=await pool.query("UPDATE cc_google SET lease_until=now()+interval '2 minutes',lease_token=$2 WHERE organization_id=$1 AND paused=false AND (lease_until IS NULL OR lease_until<now()) RETURNING 1",[org(),lease]);
  if(!claim.rowCount)throw new GoogleError('Ya hay una revisión del correo en curso.',409);
  const summary={messages:0,files:0,drafts:0,skipped:0,more:false};
  try{const token=await accessToken();const after=Math.floor(Date.parse(setting.since+'T00:00:00Z')/1000);
-  outer:for(const label of setting.labels){let pageToken:string|undefined;
-   for(let page=0;page<4;page++){const params=new URLSearchParams({maxResults:'50',labelIds:label.id,q:`has:attachment after:${after}`});if(pageToken)params.set('pageToken',pageToken);
+  // Sin etiquetas marcadas se revisa todo el correo. Gmail ya filtra por nombre de adjunto; el contenido se comprueba después.
+  outer:for(const label of (setting.labels.length?setting.labels:[null])){let pageToken:string|undefined;
+   for(let page=0;page<4;page++){const params=new URLSearchParams({maxResults:'50',q:`has:attachment {filename:pdf filename:xml filename:edi filename:edifact} after:${after}`});if(label)params.set('labelIds',label.id);if(pageToken)params.set('pageToken',pageToken);
     const list=await gmail('/messages?'+params,token);const ids=z.array(z.object({id:z.string().regex(/^[a-zA-Z0-9_-]+$/)})).parse(list.messages||[]).map(m=>m.id);
     const seen=new Set((await pool.query('SELECT message_id FROM cc_gmail_seen WHERE organization_id=$1 AND message_id=ANY($2)',[org(),ids])).rows.map(r=>r.message_id));
     for(const id of ids){if(seen.has(id))continue;if(Date.now()>end){summary.more=true;break outer;}

@@ -27,11 +27,11 @@ export default function SettingsView({state,reload}:{state:AppState;reload:()=>P
  const disconnect=()=>run('disconnect',async()=>{if(!window.confirm('¿Desconectar Gmail? Dejará de revisarse el correo. Los documentos se conservan.'))return;await api('/api/google',{method:'DELETE'});await reload();setNotice(['success','Gmail desconectado.']);});
  const configure=()=>run('labels',async()=>{const r=await api<{labels:{id:string;name:string}[]}>('/api/google/labels');setLabels(r.labels);setFormError('');
   setForm({name:state.gmail?.name||'Facturas Gmail',labels:state.gmail?.labels.map(l=>l.id)||[],since:state.gmail?.since||new Date(Date.now()-30*864e5).toISOString().slice(0,10),sender:state.gmail?.sender||'',subject:state.gmail?.subject||'',autoRead:state.gmail?.autoRead??true});});
- async function save(){if(!form||busy)return;setBusy('save');setFormError('');try{await post({action:'save',config:{...form,labels:labels.filter(l=>form.labels.includes(l.id))}});setForm(null);await reload();setNotice(['success','Configuración guardada. Habilita la captura cuando quieras comenzar.']);}catch(e){setFormError((e as Error).message);}finally{setBusy(null);}}
+ async function save(){if(!form||busy)return;setBusy('save');setFormError('');try{await post({action:'save',config:{...form,name:form.name.trim()||'Facturas Gmail',since:form.since||new Date(Date.now()-30*864e5).toISOString().slice(0,10),labels:labels.filter(l=>form.labels.includes(l.id))}});setForm(null);await reload();setNotice(['success','Configuración guardada. Habilita la captura cuando quieras comenzar.']);}catch(e){setFormError((e as Error).message);}finally{setBusy(null);}}
  const toggle=()=>run('pause',async()=>{await post({action:'pause',paused:!g.paused});await reload();setNotice(['success',g.paused?'Captura habilitada. El buzón se revisa solo cada mañana y también con «Comprobar ahora».':'Captura pausada.']);});
  const capture=()=>run('capture',async()=>{const b=await post<{drafts:number;messages:number;more:boolean;read:{read:number}|null}>({action:'capture'});await reload();
   setNotice(['success',`${b.drafts} ${b.drafts===1?'adjunto nuevo guardado':'adjuntos nuevos guardados'}; ${b.messages} ${b.messages===1?'correo revisado':'correos revisados'}${b.read?.read?`; ${b.read.read} leído(s) con IA`:''}.${b.more?' Quedan correos por revisar: vuelve a pulsar «Comprobar ahora».':''} Los documentos nuevos están en la Bandeja.`]);});
- const configured=Boolean(state.gmail?.labels.length),status=g.lastError?['danger','Requiere atención']:g.paused?['neutral','Captura pausada']:['success','Captura habilitada'];
+ const configured=Boolean(state.gmail),scope=state.gmail?.labels.length?state.gmail.labels.map(l=>l.id==='INBOX'?'Recibidos':l.name).join(', '):'todo el correo',status=g.lastError?['danger','Requiere atención']:g.paused?['neutral','Captura pausada']:['success','Captura habilitada'];
  return <><PageHead eyebrow="CONFIGURACIÓN" title="Ajustes"/>
   {error&&<div className="alert danger" role="alert">{error}{issue&&<> <button type="button" className="link" onClick={()=>setHelp(true)}>Ver cómo solucionarlo</button></>}</div>}
   {notice&&<div className={'alert '+notice[0]} role="status">{notice[1]}</div>}
@@ -45,20 +45,19 @@ export default function SettingsView({state,reload}:{state:AppState;reload:()=>P
 
   <DriveConnection status={state.drive} onChanged={reload}/>
 
-  <section className="panel setting"><div className="setting-head"><span className="setting-icon"><Mail size={20}/></span><div><h2>Correo de facturas (Gmail)</h2><p className="muted">Conecta tu buzón y captura los adjuntos de facturas y albaranes. Acceso de solo lectura: no se marcan correos como leídos ni se mueven o eliminan.</p></div>{g.connected?<Badge tone={status[0]}>{status[1]}</Badge>:<Badge>Sin conectar</Badge>}</div>
+  <section className="panel setting"><div className="setting-head"><span className="setting-icon"><Mail size={20}/></span><div><h2>Correo de facturas (Gmail)</h2><p className="muted">Conecta tu buzón y captura los adjuntos en PDF y las facturas electrónicas (XML, UBL o EDIFACT). Acceso de solo lectura: no se marcan correos como leídos ni se mueven o eliminan.</p></div>{g.connected?<Badge tone={status[0]}>{status[1]}</Badge>:<Badge>Sin conectar</Badge>}</div>
    {!g.configured?<p className="muted">Completa antes la preparación de Google.</p>
-   :!g.connected?<><ol className="drive-steps"><li>Pulsa <strong>Conectar Gmail</strong>, elige tu cuenta de Google y pulsa <strong>Permitir</strong>.</li><li>Al volver, pulsa <strong>Configurar</strong> y elige las etiquetas y la fecha desde la que revisar.</li><li>Pulsa <strong>Habilitar captura</strong> y después <strong>Comprobar ahora</strong>.</li></ol>
+   :!g.connected?<><ol className="drive-steps"><li>Pulsa <strong>Conectar Gmail</strong>, elige tu cuenta de Google y pulsa <strong>Permitir</strong>.</li><li>Pulsa <strong>Habilitar captura</strong> y después <strong>Comprobar ahora</strong>.</li><li>Opcional: con <strong>Configurar</strong> limitas la revisión a unas etiquetas, una fecha o un remitente.</li></ol>
      <p className="muted small"><ShieldCheck size={15} className="ok-icon"/> La app solo puede leer el correo. No puede enviar, borrar ni modificar nada.</p>
      <button className="btn primary" onClick={connect} disabled={!!busy}>{busy==='connect'?<Loader2 size={16} className="spin"/>:<Mail size={16}/>}{busy==='connect'?'Abriendo Google…':'Conectar Gmail'}</button></>
    :<div className="setting-body">
-     <p><strong>{state.gmail?.name||'Facturas Gmail'}</strong> · {g.email}{configured&&<> · {state.gmail!.labels.map(l=>l.id==='INBOX'?'Recibidos':l.name).join(', ')}</>}</p>
+     <p><strong>{state.gmail?.name||'Facturas Gmail'}</strong> · {g.email} · {scope}</p>
      <p className="muted small">Última captura correcta: {g.lastSync?dateTime(g.lastSync):'todavía no realizada'}{configured&&<> · revisa desde {state.gmail!.since}</>}</p>
      {g.missingScopes.length>0&&<div className="alert warning">Falta el permiso de lectura de Gmail. <button className="link" onClick={connect}>Volver a conectar</button></div>}
      {g.lastError&&<div className="alert danger" role="alert"><AlertTriangle size={15}/>{g.lastError} <button className="link" onClick={connect}>Volver a conectar</button></div>}
-     {!configured&&<div className="alert info">Falta un paso: pulsa <strong>Configurar</strong> para elegir las etiquetas y la fecha. Después podrás habilitar la captura.</div>}
-     {configured&&g.paused&&!g.lastError&&<div className="alert info">La captura está pausada. Pulsa <strong>Habilitar captura</strong> para empezar a recoger adjuntos.</div>}
+     {g.paused&&!g.lastError&&<div className="alert info">La captura está pausada. Pulsa <strong>Habilitar captura</strong> para empezar. Con <strong>Configurar</strong> puedes limitar etiquetas, fecha o remitente; es opcional.</div>}
      <div className="row-actions"><button className="btn primary small" disabled={!!busy||g.paused} onClick={capture}>{busy==='capture'?<Loader2 size={15} className="spin"/>:<RefreshCw size={15}/>}{busy==='capture'?'Comprobando…':'Comprobar ahora'}</button>
-      <button className="btn small" disabled={!!busy||(g.paused&&!configured)} onClick={toggle}>{g.paused?<Play size={15}/>:<Pause size={15}/>}{g.paused?'Habilitar captura':'Pausar'}</button>
+      <button className="btn small" disabled={!!busy} onClick={toggle}>{g.paused?<Play size={15}/>:<Pause size={15}/>}{g.paused?'Habilitar captura':'Pausar'}</button>
       <button className="btn small" disabled={!!busy} onClick={configure}>{busy==='labels'?<Loader2 size={15} className="spin"/>:<SlidersHorizontal size={15}/>}Configurar</button></div>
      <div className="row-actions"><button className="link" onClick={connect}>Cambiar de cuenta o renovar el permiso</button><button className="link danger" onClick={disconnect}><Link2Off size={14}/>Desconectar</button></div></div>}</section>
 
@@ -68,16 +67,15 @@ export default function SettingsView({state,reload}:{state:AppState;reload:()=>P
    {state.ai.configured?<p>Modelo <code>{state.ai.model}</code> · hoy {state.ai.used} de {state.ai.limit} lecturas.</p>:<p>Falta <code>ANTHROPIC_API_KEY</code> en Vercel.</p>}</section>
 
   {form&&<Modal title="Configurar Gmail" onClose={()=>{if(busy!=='save')setForm(null);}}><form className="form-stack" onSubmit={e=>{e.preventDefault();void save();}}>
-   <p className="muted">Acceso autorizado de solo lectura. Al guardar, la captura queda pausada hasta que la habilites.</p>
-   <label>Nombre<input required maxLength={100} value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>
-   <fieldset className="check-group"><legend>Etiquetas que se revisan</legend><div className="label-list">{labels.map(l=><label key={l.id} className="check"><input type="checkbox" checked={form.labels.includes(l.id)} onChange={e=>setForm({...form,labels:e.target.checked?[...form.labels,l.id]:form.labels.filter(x=>x!==l.id)})}/>{l.id==='INBOX'?'Recibidos (todo el correo)':l.name}</label>)}</div></fieldset>
-   <label>Revisar desde<input type="date" required value={form.since} onChange={e=>setForm({...form,since:e.target.value})}/></label>
+   <p className="muted">Todos los campos son opcionales. Solo se recogen correos con adjuntos PDF o factura electrónica (XML, UBL o EDIFACT). Al guardar, la captura queda pausada hasta que la habilites.</p>
+   <label>Nombre<input maxLength={100} placeholder="Facturas Gmail" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></label>
+   <fieldset className="check-group"><legend>Etiquetas que se revisan (si no marcas ninguna, todo el correo)</legend><div className="label-list">{labels.map(l=><label key={l.id} className="check"><input type="checkbox" checked={form.labels.includes(l.id)} onChange={e=>setForm({...form,labels:e.target.checked?[...form.labels,l.id]:form.labels.filter(x=>x!==l.id)})}/>{l.id==='INBOX'?'Recibidos (todo el correo)':l.name}</label>)}</div></fieldset>
+   <label>Revisar desde<input type="date" value={form.since} onChange={e=>setForm({...form,since:e.target.value})}/></label>
    <label>Remitente contiene<input maxLength={254} value={form.sender} onChange={e=>setForm({...form,sender:e.target.value})} placeholder="Opcional: p. ej. @proveedor.com" autoCapitalize="none" autoCorrect="off"/></label>
    <label>Asunto contiene<input maxLength={150} value={form.subject} onChange={e=>setForm({...form,subject:e.target.value})} placeholder="Opcional: p. ej. factura"/></label>
    <label className="check"><input type="checkbox" checked={form.autoRead} onChange={e=>setForm({...form,autoRead:e.target.checked})}/>Leer automáticamente con IA los adjuntos nuevos</label>
    {formError&&<div className="alert danger" role="alert">{formError}</div>}
-   <button className="btn primary" disabled={busy==='save'||!form.labels.length}>{busy==='save'?'Guardando…':'Guardar configuración pausada'}</button>
-   {!form.labels.length&&<p className="muted small">Elige al menos una etiqueta.</p>}
+   <button className="btn primary" disabled={busy==='save'}>{busy==='save'?'Guardando…':'Guardar configuración pausada'}</button>
   </form></Modal>}
   {help&&issue&&<DriveHelp issue={issue.kind} service={issue.service} onClose={()=>setHelp(false)}/>}
  </>;}

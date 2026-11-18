@@ -4,7 +4,7 @@ App externa e independiente que **concilia facturas de proveedor con albaranes**
 
 ## Cómo funciona
 
-1. **Entrada**: PDF o fotos subidos a mano, o adjuntos de las etiquetas de Gmail elegidas.
+1. **Entrada**: PDF, facturas electrónicas (XML, UBL, Facturae o EDIFACT) o fotos subidos a mano; o adjuntos de Gmail. Del correo solo se recogen PDF y facturas electrónicas, reconocidos por su contenido (las imágenes se excluyen: suelen ser logotipos y firmas). Etiquetas, fecha y filtros son opcionales: sin etiquetas se revisa todo el correo.
 2. **Lectura con IA** (Claude): proveedor, NIF, número, fecha, albaranes citados, líneas (código, descripción, cantidad, unidad, precio, descuento, importe) y totales. Queda como *borrador*.
 3. **Revisión**: una persona corrige lo leído y **confirma**. Nada cuenta para la conciliación sin confirmar.
 4. **Conciliación** (`lib/matching.ts`, reglas exactas con aritmética decimal, sin IA):
