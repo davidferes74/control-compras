@@ -14,6 +14,15 @@ export function ThemePicker({compact}:{compact?:boolean}){
 export const go=(hash:string)=>{window.location.hash=hash;};
 export function Badge({tone='neutral',children}:{tone?:string;children:React.ReactNode}){return <span className={'badge '+tone}>{children}</span>;}
 export function StatusBadge({item}:{item:{kind:Kind;status:string;matchStatus:string|null}}){if(item.status==='draft')return <Badge tone="draft">Por revisar</Badge>;if(item.kind==='credit_note')return <Badge>Revisión manual</Badge>;const s=item.matchStatus?statusInfo[item.matchStatus]:null;return s?<Badge tone={s.tone}>{s.label}</Badge>:<Badge>Sin conciliar</Badge>;}
+/** Etiqueta del clasificador: verde «Factura verificada», azul «Albarán (correo)», ámbar «Dudoso — revisar». */
+export function ClassBadge({item}:{item:{classState:string;status:string;origin:string;classReason:string;duplicateOf:string|null}}){
+ if(item.duplicateOf)return <Badge>Duplicado</Badge>;
+ if(item.classState==='DESCARTADO')return <Badge>Descartado</Badge>;
+ if(item.classState==='DUDOSO')return <span className="badge warning" title={item.classReason}>Dudoso — revisar</span>;
+ if(item.origin!=='correo')return null;
+ if(item.classState==='ALBARAN')return <Badge tone="info">Albarán (correo)</Badge>;
+ // «Verificada» solo cuando ya cuenta: la dio por buena el clasificador o la validó una persona.
+ return item.status==='confirmed'?<Badge tone="success">Factura verificada</Badge>:null;}
 export function PageHead({eyebrow,title,children}:{eyebrow:string;title:string;children?:React.ReactNode}){return <header className="page-head"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1></div>{children&&<div className="page-actions">{children}</div>}</header>;}
 /** Botón destructivo de «mantener pulsado» (1,2 s). Funciona con ratón, táctil y teclado (mantener Espacio o Intro). */
 export function HoldButton({onConfirm,disabled,children,hint}:{onConfirm:()=>void;disabled?:boolean;children:React.ReactNode;hint:string}){

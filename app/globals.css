@@ -422,3 +422,18 @@ button,[role="button"],[role="radio"],.chip,.nav-item,.tabbar a,.ghost,.sheet-gr
 .check-group{border:0;padding:0;margin:0;min-width:0}
 .check-group legend{font-size:var(--text-xs);font-weight:600;color:var(--text-secondary);padding:0;margin-bottom:6px}
 .modal .label-list{max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-control);padding:4px 12px;grid-template-columns:1fr}
+
+/* Clasificador: sección Descartados y avisos */
+.alert.neutral{background:var(--surface-muted);color:inherit}
+.row-actions .spacer{flex:1}
+.alert .btn.small{margin-left:8px;vertical-align:middle}
+.alert .row-actions{margin-top:10px}
+.discarded{list-style:none;margin:0;padding:0}
+.discarded li{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;padding:14px 16px;border-top:1px solid var(--border)}
+.discarded li:first-child{border-top:0}
+.discarded-main{min-width:0;display:grid;gap:4px}
+.discarded-main .badge{justify-self:start}
+.discarded-main small{color:var(--text-muted);overflow-wrap:anywhere}
+.discarded-main p{margin:0;font-size:.9rem}
+.discarded-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
+@media (max-width:700px){.discarded li{flex-direction:column}.discarded-actions{justify-content:flex-start}}

@@ -5,9 +5,8 @@
 > Los requisitos R1–R7 son invariantes del sistema: no se modifican ni se relajan sin su aprobación explícita.
 > Si una tarea entra en conflicto con ellos, hay que detenerse y preguntar.
 >
-> **Estado: pendiente de implementar.** Este documento define lo que la app debe hacer; todavía no describe el
-> código actual. Quien lo implemente presenta primero un plan, espera el visto bueno y actualiza este estado y
-> el resumen de `AGENTS.md` al terminar cada fase.
+> **Estado: implementado en parte** (ver «Avance» más abajo). Quien continúe actualiza ese apartado y el resumen
+> de `AGENTS.md` al terminar cada fase.
 
 ## Decisiones del propietario (18-11-2026)
 
@@ -18,7 +17,14 @@ Aclaran el texto original, que sigue debajo sin cambios. Si hay contradicción, 
 3. Si no se puede clasificar (límite diario de lecturas agotado o clave no válida), los documentos quedan pendientes, fuera de los listados, y la app muestra un aviso con el contador «N documentos pendientes de clasificar».
 4. Abonos y facturas rectificativas se clasifican como `FACTURA` con su tipo indicado, y la app los sigue tratando como abono en la conciliación.
 
-Avance: fase 1 (R1, solo correos de entrada) implementada en `lib/gmail-capture.ts` con pruebas en `tests/correo-entrada.test.ts`. El resto, pendiente.
+Avance (18-11-2026):
+
+- R1 (solo correos de entrada): `lib/gmail-capture.ts`, pruebas en `tests/correo-entrada.test.ts`.
+- R2 y R3 (entrada única, estados, descartar sin borrar, PDF con varios documentos): `lib/intake.ts`, `lib/documents.ts`, `migrations/004_clasificacion.sql`.
+- R4 (criterios y umbrales): `lib/classify-rules.ts`. Umbrales en el ajuste `clasificador` de `cc_settings` (por defecto 0,85).
+- R6 (prompt único y versionado): `lib/prompts/clasificador-documentos.ts`. Es el texto base de abajo adaptado a los campos de la app; los datos que no aparecen se devuelven como cadena vacía en lugar de null.
+- Pruebas de blindaje: `tests/clasificacion.test.ts` (b, c, d, f, g, h, i) y `tests/correo-entrada.test.ts` (a).
+- Pendiente: R5 (plantillas de proveedor, prueba e), pantalla para cambiar los umbrales y reclasificación de los documentos anteriores (requiere confirmación del propietario).
 
 # TAREA: Filtro de correos entrantes + clasificación obligatoria de documentos con IA
 

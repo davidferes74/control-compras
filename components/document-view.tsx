@@ -2,7 +2,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {ArrowLeft,Check,CheckCircle2,AlertTriangle,Info,Loader2,Plus,Sparkles,Trash2,X,Eye,EyeOff,ExternalLink,RotateCcw,HelpCircle} from 'lucide-react';
 import {api,money,qty,date,parseDecimal,showDecimal,kindLabel,statusInfo,type FullDocument,type Kind,type InvoiceMatch,type DeliveryState } from './lib';
-import {Badge,StatusBadge,HoldButton,go} from './ui';
+import {Badge,StatusBadge,ClassBadge,HoldButton,go} from './ui';
 
 type FormLine={code:string;description:string;quantity:string;unit:string;unitPrice:string;discountPct:string;amount:string;deliveryRef:string};
 type Form={kind:Kind;supplier:string;supplierTaxId:string;number:string;date:string;deliveryRefs:string;subtotal:string;tax:string;total:string;lines:FormLine[]};
@@ -29,17 +29,24 @@ export default function DocumentView({id,onChanged}:{id:string;onChanged:()=>Pro
   const r=await api<FullDocument>('/api/documents/'+id,{method:'PUT',body:JSON.stringify({document:input,confirm})});apply(r);await onChanged();
   setNotice(confirm?'Confirmado. Se ha conciliado y se archivará en Drive si hay carpeta elegida.':'Guardado.');});
  const reread=()=>run('read',async()=>{if(dirty&&!window.confirm('Se perderán los cambios sin guardar. ¿Volver a leer con IA?'))return;apply(await api<FullDocument>(`/api/documents/${id}/read`,{method:'POST'}));await onChanged();setNotice('Leído de nuevo con IA. Revisa los datos.');});
+ const recover=(kind:'invoice'|'delivery_note')=>run('recover',async()=>{apply(await api<FullDocument>('/api/documents/'+id,{method:'POST',body:JSON.stringify({action:'recover',kind})}));await onChanged();setNotice('Recuperado. Revisa los datos y confírmalo.');});
+ const discarded=doc.classState==='DESCARTADO';
  // La confirmación es mantener pulsado el botón (HoldButton), no una ventana del navegador.
  const remove=()=>run('delete',async()=>{await api('/api/documents/'+id,{method:'DELETE'});await onChanged();go(doc.status==='draft'?'bandeja':doc.kind==='delivery_note'?'albaranes':'facturas');});
+ const pct=doc.confidence===null?'':` · confianza ${Math.round(doc.confidence*100)} %`;
  const decide=(key:string,reason:string|null)=>run('decide',async()=>{apply(await api<FullDocument>(`/api/documents/${id}/decisions`,{method:'POST',body:JSON.stringify({key,reason})}));await onChanged();});
  const fileUrl=doc.file?'/api/files/'+doc.file.id:null;
  return <div className="docview">
   <div className="doc-top"><button className="btn ghost-btn" onClick={()=>history.length>1?history.back():go('bandeja')}><ArrowLeft size={16}/>Volver</button>
-   <div className="doc-title"><p className="eyebrow">{kindLabel[doc.kind].toUpperCase()}{doc.file?.source==='gmail'?' · DESDE GMAIL':''}</p><h1>{doc.number||'Sin número'}</h1><p className="muted">{doc.supplier||'Proveedor sin identificar'} · {date(doc.date)}</p></div>
-   <div className="doc-status"><StatusBadge item={doc}/>{doc.driveFileId?<a className="badge neutral" href={`https://drive.google.com/file/d/${doc.driveFileId}/view`} target="_blank" rel="noreferrer">En Drive<ExternalLink size={12}/></a>:doc.status==='confirmed'&&doc.driveError?<span className="badge warning" title={doc.driveError}>Drive pendiente</span>:null}</div></div>
+   <div className="doc-title"><p className="eyebrow">{kindLabel[doc.kind].toUpperCase()}{doc.origin==='correo'?' · CORREO':doc.origin==='escaneo'?' · ESCANEO':''}</p><h1>{doc.number||'Sin número'}</h1><p className="muted">{doc.supplier||'Proveedor sin identificar'} · {date(doc.date)}</p></div>
+   <div className="doc-status"><ClassBadge item={doc}/>{!discarded&&<StatusBadge item={doc}/>}{doc.driveFileId?<a className="badge neutral" href={`https://drive.google.com/file/d/${doc.driveFileId}/view`} target="_blank" rel="noreferrer">En Drive<ExternalLink size={12}/></a>:doc.status==='confirmed'&&doc.driveError?<span className="badge warning" title={doc.driveError}>Drive pendiente</span>:null}</div></div>
   {doc.file?.subject&&<p className="muted small">Correo: «{doc.file.subject}» · {doc.file.sender}</p>}
   {error&&<div className="alert danger" role="alert">{error}</div>}{notice&&<div className="alert success" role="status">{notice}</div>}
-  {doc.warnings.length>0&&doc.status==='draft'&&<div className="alert warning"><strong>Avisos de la lectura</strong><ul>{doc.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
+  {discarded?<div className="alert neutral"><strong>Descartado{doc.detectedType?': '+doc.detectedType:''}.</strong> {doc.classReason} No cuenta para conciliar y no se ha borrado.<div className="row-actions"><button className="btn small" disabled={!!busy} onClick={()=>recover('invoice')}>Es una factura</button><button className="btn small" disabled={!!busy} onClick={()=>recover('delivery_note')}>Es un albarán</button></div></div>
+   :doc.duplicateOf?<div className="alert info"><strong>Duplicado.</strong> {doc.classReason} <a href={'#doc/'+doc.duplicateOf}>Ver el documento ya registrado</a></div>
+   :doc.classState==='DUDOSO'?<div className="alert warning"><strong>Dudoso — revisar.</strong> {doc.classReason}{doc.detectedType&&<> Tipo probable: {doc.detectedType}{pct}.</>}{doc.missingFields.length>0&&<> Falta: {doc.missingFields.join(', ')}.</>} No cuenta para conciliar hasta que lo valides.</div>
+   :doc.classBy==='ia'?<p className="muted small">Clasificado por la IA como {doc.detectedType||kindLabel[doc.kind].toLowerCase()}{pct}. {doc.classReason}</p>:null}
+  {doc.warnings.length>0&&doc.status==='draft'&&!discarded&&<div className="alert warning"><strong>Avisos de la lectura</strong><ul>{doc.warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></div>}
   {doc.status==='confirmed'&&doc.match&&(doc.kind==='invoice'?<InvoicePanel doc={doc} match={doc.match as InvoiceMatch} decide={decide} busy={busy==='decide'}/>:doc.kind==='delivery_note'?<DeliveryPanel doc={doc} state={doc.match as DeliveryState}/>:null)}
   {doc.status==='confirmed'&&doc.kind==='credit_note'&&<div className="alert info">Los abonos se registran y archivan, pero no se concilian automáticamente: revísalos contra la factura que rectifican.</div>}
   <div className={'doc-grid'+(fileUrl&&showOriginal?'':' single')}>
@@ -69,9 +76,9 @@ export default function DocumentView({id,onChanged}:{id:string;onChanged:()=>Pro
     </div>
     <div className="totals"><label>Base imponible<input className="num" inputMode="decimal" value={form.subtotal} onChange={e=>set('subtotal',e.target.value)}/></label><label>IVA<input className="num" inputMode="decimal" value={form.tax} onChange={e=>set('tax',e.target.value)}/></label><label>Total<input className="num" inputMode="decimal" value={form.total} onChange={e=>set('total',e.target.value)}/></label></div>
     <div className="actions">
-     {doc.status==='draft'?<><button className="btn primary" disabled={!!busy} onClick={()=>save(true)}>{busy==='confirm'?<Loader2 size={16} className="spin"/>:<Check size={16}/>}Confirmar y conciliar</button><button className="btn" disabled={!!busy||!dirty} onClick={()=>save(false)}>Guardar borrador</button>{doc.file&&<button className="btn" disabled={!!busy} onClick={reread}>{busy==='read'?<Loader2 size={16} className="spin"/>:<Sparkles size={16}/>}{busy==='read'?'Leyendo…':'Leer con IA'}</button>}</>
+     {discarded?<span className="muted small">Recupéralo como factura o albarán para poder editarlo.</span>:doc.status==='draft'?<><button className="btn primary" disabled={!!busy} onClick={()=>save(true)}>{busy==='confirm'?<Loader2 size={16} className="spin"/>:<Check size={16}/>}{doc.classState==='DUDOSO'?'Validar y conciliar':'Confirmar y conciliar'}</button><button className="btn" disabled={!!busy||!dirty} onClick={()=>save(false)}>Guardar borrador</button>{doc.file&&<button className="btn" disabled={!!busy} onClick={reread}>{busy==='read'?<Loader2 size={16} className="spin"/>:<Sparkles size={16}/>}{busy==='read'?'Leyendo…':'Leer con IA'}</button>}</>
       :<button className="btn primary" disabled={!!busy||!dirty} onClick={()=>save(false)}>{busy==='save'?<Loader2 size={16} className="spin"/>:<Check size={16}/>}Guardar cambios</button>}
-     <span className="spacer"/><HoldButton disabled={!!busy} onConfirm={remove} hint={doc.status==='draft'?'Mantén pulsado para descartar el borrador':'Mantén pulsado para eliminar; las conciliaciones se recalcularán'}><Trash2 size={16}/>{busy==='delete'?'Eliminando…':doc.status==='draft'?'Mantén para descartar':'Mantén para eliminar'}</HoldButton></div>
+     <span className="spacer"/>{!discarded&&<HoldButton disabled={!!busy} onConfirm={remove} hint={doc.status==='draft'?'Mantén pulsado para descartar; podrás recuperarlo desde Descartados':'Mantén pulsado para descartar; dejará de contar para conciliar y podrás recuperarlo'}><Trash2 size={16}/>{busy==='delete'?'Descartando…':doc.kind==='delivery_note'&&doc.origin==='correo'?'No es un albarán':'Mantén para descartar'}</HoldButton>}</div>
     {dirty&&<p className="muted small">Hay cambios sin guardar.{doc.status==='confirmed'?' Al guardar se recalcula la conciliación.':''}</p>}
    </section>
   </div>
