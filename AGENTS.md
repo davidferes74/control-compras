@@ -13,6 +13,17 @@ App externa e independiente: concilia facturas de proveedor con albaranes. Lee R
 - Ningún secreto en Git, cliente ni registros.
 - Cada cambio de conciliación con pruebas en tests/matching.test.ts. Antes de entregar: npm test, npx tsc --noEmit, npm run build.
 
+## Ramas y merges
+
+`main` es producción: Vercel publica cada commit que entra en `main`. Nunca se trabaja directamente sobre `main`.
+
+1. Una rama por cambio, desde `main` actualizado: `git switch main && git pull && git switch -c <tipo>/<descripcion-corta>`.
+   Tipos: `feat/` (función nueva), `fix/` (corrección), `ui/` (diseño), `docs/` (documentación), `chore/` (dependencias, configuración).
+2. Commits pequeños en la rama. Antes de fusionar: `npm test`, `npx tsc --noEmit` y `npm run build` sin errores.
+3. Subir la rama a GitHub (`git push -u origin <rama>`). Vercel crea una vista previa de la rama para revisarla.
+4. Fusionar en `main` con commit de merge, para que quede registrado: `git switch main && git merge --no-ff <rama>` y `git push`.
+5. Las ramas fusionadas se conservan en GitHub como registro; no se borran salvo que se pida.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 ## This is NOT the Next.js you know
