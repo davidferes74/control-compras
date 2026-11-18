@@ -9,7 +9,7 @@ export function ThemePicker({compact}:{compact?:boolean}){
  const [theme,setTheme]=useState<Theme>('slate');
  useEffect(()=>{const read=()=>setTheme((document.documentElement.getAttribute('data-theme') as Theme)||'slate');read();window.addEventListener('cc:theme',read);return()=>window.removeEventListener('cc:theme',read);},[]);
  // El cambio de fondo funde los colores en 240 ms (data-theme-transition, definido en la fundación de Sentidiño).
- function pick(t:Theme){const root=document.documentElement;root.setAttribute('data-theme-transition','');root.setAttribute('data-theme',t);setTimeout(()=>root.removeAttribute('data-theme-transition'),300);try{localStorage.setItem('cc-theme',t);}catch{/* sin almacenamiento */}window.dispatchEvent(new Event('cc:theme'));}
+ function pick(t:Theme){const root=document.documentElement;root.setAttribute('data-theme-transition','');root.setAttribute('data-theme',t);setTimeout(()=>root.removeAttribute('data-theme-transition'),300);(window as unknown as {__ccThemeColor?:(t:Theme)=>void}).__ccThemeColor?.(t);try{localStorage.setItem('cc-theme',t);}catch{/* sin almacenamiento */}window.dispatchEvent(new Event('cc:theme'));}
  return <div className={'theme-picker'+(compact?' compact':'')} role="radiogroup" aria-label="Fondo">{themes.map(t=><button key={t.id} role="radio" aria-checked={theme===t.id} className={theme===t.id?'on':''} onClick={()=>pick(t.id)} title={t.label}><t.icon size={15}/>{!compact&&<span>{t.label}</span>}</button>)}</div>;}
 export const go=(hash:string)=>{window.location.hash=hash;};
 export function Badge({tone='neutral',children}:{tone?:string;children:React.ReactNode}){return <span className={'badge '+tone}>{children}</span>;}

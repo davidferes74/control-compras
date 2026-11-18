@@ -18,7 +18,7 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.85em;bac
 button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:0}
 button:disabled{cursor:default;opacity:.55}
 input,select,textarea{font:inherit;color:var(--foreground);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-chip);min-height:var(--control-height-md);padding:0 var(--space-3);width:100%;transition:border-color var(--duration-fast) var(--ease-standard),box-shadow var(--duration-fast) var(--ease-standard)}
-input:hover:not(:focus),select:hover:not(:focus){border-color:var(--border-strong)}
+@media (hover:hover) and (pointer:fine){input:hover:not(:focus),select:hover:not(:focus){border-color:var(--border-strong)}}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-subtle)}
 input[type=checkbox]{width:18px;height:18px;min-height:0;accent-color:var(--accent);margin:0}
 label{display:flex;flex-direction:column;gap:6px;font-size:var(--text-xs);font-weight:600;color:var(--text-secondary)}
@@ -83,7 +83,7 @@ label small{font-weight:400;color:var(--text-muted)}
 .row-actions{display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap;margin:var(--space-3) 0 var(--space-5)}
 
 /* Acceso y configuración pendiente */
-.setup{min-height:100dvh;display:grid;place-items:center;padding:var(--space-6) 16px;background:var(--arc-gradient-soft)}
+.setup{min-height:100svh;display:grid;place-items:center;padding:var(--space-6) 16px;background:var(--arc-gradient-soft)}
 .setup-card{width:min(440px,100%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-surface);box-shadow:var(--shadow-floating);padding:var(--space-8);display:flex;flex-direction:column;gap:var(--space-4)}
 .setup-card ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
 .login .btn{margin-top:var(--space-2)}
@@ -364,3 +364,21 @@ h2{letter-spacing:-.02em;line-height:1.2}
 @media (max-width:860px){.doc-row{grid-template-columns:minmax(0,1fr) auto}}
 .doc-row{grid-template-columns:minmax(0,1fr) 96px 104px 150px 16px}
 @media (max-width:860px){.doc-row{grid-template-columns:minmax(0,1fr) auto}}
+
+/* ============================================================
+   Sensación nativa en el móvil (mobile-native)
+   ============================================================ */
+/* Sin destello gris al tocar (cada control ya tiene su :active) y sin «tirar para recargar» en una app. */
+html{-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+body{overscroll-behavior:none}
+/* Toque inmediato: sin el retraso de doble toque. */
+button,a,[role="button"],[role="radio"],summary,label.check{touch-action:manipulation}
+/* Los controles no seleccionan su texto ni sacan el menú al mantener pulsado; el contenido sí se puede copiar. */
+button,[role="button"],[role="radio"],.chip,.nav-item,.tabbar a,.ghost,.sheet-grab,summary{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+/* iPhone hace zoom en casillas de menos de 16 px y no vuelve. En pantallas táctiles, 16 px. */
+@media (pointer:coarse){input,select,textarea,.line input,.accept input,.search input{font-size:16px}}
+/* Muesca y bordes redondeados: el contenido se aparta de las zonas seguras (viewport-fit=cover ya está). */
+@media (max-width:860px){
+ .main{--pad-x:max(16px,env(safe-area-inset-left,0px));--pad-top:calc(var(--space-5) + env(safe-area-inset-top,0px));padding-top:var(--pad-top);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+ .tabbar{padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+}

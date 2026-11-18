@@ -49,7 +49,7 @@ export default function App({initialAuthed,user}:{initialAuthed:boolean;user:str
 function Login({user,onDone}:{user:string;onDone:()=>void}){const [u,setU]=useState(user),[p,setP]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
  async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{await api('/api/session',{method:'POST',body:JSON.stringify({username:u,password:p})});onDone();}catch(err){setError((err as Error).message);}finally{setBusy(false);}}
  return <main className="setup"><form className="setup-card login" onSubmit={submit}><p className="eyebrow">SENTIDIÑO</p><h1>Control de compras</h1><p className="muted">Facturas de proveedor frente a albaranes: qué cuadra y qué no.</p>
-  <label>Usuario<input autoComplete="username" value={u} onChange={e=>setU(e.target.value)} required/></label><label>Contraseña<input type="password" autoComplete="current-password" value={p} onChange={e=>setP(e.target.value)} required autoFocus/></label>
+  <label>Usuario<input autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} value={u} onChange={e=>setU(e.target.value)} required/></label><label>Contraseña<input type="password" autoComplete="current-password" enterKeyHint="go" value={p} onChange={e=>setP(e.target.value)} required autoFocus/></label>
   {error&&<p className="field-error" role="alert">{error}</p>}<button className="btn primary" disabled={busy}>{busy?'Entrando…':'Entrar'}</button></form></main>;}
 
 
@@ -98,7 +98,7 @@ function ListView({kind,items}:{kind:Kind;items:ListItem[]}){
  const n=(s:string)=>mine.filter(d=>d.matchStatus===s).length;
  return <><PageHead eyebrow="CONFIRMADOS" title={kind==='invoice'?'Facturas':'Albaranes'}/>
   <div className="toolbar"><div className="chips" role="group" aria-label="Filtrar">{filters.map(([k,l])=><button key={k} className={'chip'+(filter===k?' on':'')} onClick={()=>setFilter(k)}>{l}{k!=='all'&&<span>{n(k)}</span>}</button>)}</div>
-   <label className="search"><Search size={16}/><input placeholder="Buscar número o proveedor" value={q} onChange={e=>setQ(e.target.value)} aria-label="Buscar"/></label></div>
+   <label className="search"><Search size={16}/><input placeholder="Buscar número o proveedor" type="search" enterKeyHint="search" autoCapitalize="none" autoCorrect="off" value={q} onChange={e=>setQ(e.target.value)} aria-label="Buscar"/></label></div>
   <section className="panel">{!shown.length?<Empty title={mine.length?'Ningún resultado':'Todavía no hay '+(kind==='invoice'?'facturas':'albaranes')+' confirmados'} text={mine.length?'Prueba con otro filtro.':'Confirma documentos desde la Bandeja.'}/>:<DocTable items={shown} showKind={kind==='invoice'}/>}</section></>;}
 
 function IssuesView({items}:{items:ListItem[]}){return <><PageHead eyebrow="REVISIÓN" title="Diferencias"/>
