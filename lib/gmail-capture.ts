@@ -3,9 +3,9 @@ import {z} from 'zod';
 import {getPool,org,getSetting,setSetting,audit} from './server-store';
 import {accessToken,gmail,connection,GoogleError} from './google';
 import {readMessage,maxMessageBytes} from './mail-items';
-import {storeFile,draftFromFile} from './documents';
-// Captura de adjuntos desde Gmail: revisa las etiquetas elegidas, guarda cada PDF/imagen como archivo y crea
-// un borrador (leído con IA si está activado). Cada correo se procesa una sola vez (cc_gmail_seen).
+import {procesarAdjuntoEntrante} from './intake';
+// Captura de adjuntos desde Gmail: revisa las etiquetas elegidas y entrega cada PDF o factura electrónica a la
+// entrada única (procesarAdjuntoEntrante), que lo deja pendiente de clasificar. Cada correo se procesa una sola vez (cc_gmail_seen).
 // Configuración como en Recepciones-IA: nombre, etiquetas, fecha inicial y filtros «contiene» de remitente y asunto.
 export const gmailSettingSchema=z.object({name:z.string().trim().min(1).max(100).default('Facturas Gmail'),labels:z.array(z.object({id:z.string().min(1).max(200),name:z.string().max(200)})).max(20),since:z.iso.date(),sender:z.string().trim().max(254).default(''),subject:z.string().trim().max(150).default(''),own:z.string().trim().max(1000).regex(/^[A-Za-z0-9._%+@\-\s,;]*$/,'Cuentas y dominios propios: solo direcciones o dominios separados por comas.').default(''),autoRead:z.boolean()});
 export type GmailSetting=z.infer<typeof gmailSettingSchema>;
@@ -54,13 +54,13 @@ export async function captureGmail(budgetMs=40_000){
      else if(!passesFilters(setting,header('from'),header('subject'))){outcome='excluido por filtros';summary.skipped++;}
      else if(!meta.sizeEstimate||meta.sizeEstimate>maxMessageBytes)outcome='correo mayor de 6 MB';
      else{const items=await readMessage(async()=>{const raw=await gmail(`/messages/${id}?format=raw`,token);return typeof raw.raw==='string'?Buffer.from(raw.raw,'base64url'):null;},e=>e instanceof GoogleError);
-      let saved=0;for(const it of items){if(it.status!=='received'||!it.bytes||!it.mime)continue;const f=await storeFile({bytes:it.bytes,filename:it.filename,mime:it.mime,source:'gmail',sourceRef:id,sender:header('from'),subject:header('subject'),receivedAt:meta.internalDate?new Date(Number(meta.internalDate)):null});summary.files++;saved++;
-       if(!f.duplicate){await draftFromFile(f.id,{read:false});summary.drafts++;}}
+      let saved=0;for(const it of items){if(it.status!=='received'||!it.bytes||!it.mime)continue;const f=await procesarAdjuntoEntrante({bytes:it.bytes,filename:it.filename,mime:it.mime,messageId:id,sender:header('from'),subject:header('subject'),receivedAt:meta.internalDate?new Date(Number(meta.internalDate)):null});summary.files++;saved++;
+       if(!f.duplicate)summary.drafts++;}
       outcome=saved?`${saved} adjunto(s)`:outcome;if(!saved)summary.skipped++;}
      await pool.query('INSERT INTO cc_gmail_seen(organization_id,message_id,outcome) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',[org(),id,outcome]);summary.messages++;}
     pageToken=list.nextPageToken;if(!pageToken)break;}}
   await pool.query('UPDATE cc_google SET last_sync=now(),last_error=NULL WHERE organization_id=$1',[org()]);
-  if(summary.drafts)await audit('gmail',`Gmail: ${summary.drafts} documento(s) nuevo(s) de ${summary.messages} correo(s).`);
+  if(summary.drafts)await audit('gmail',`Gmail: ${summary.drafts} adjunto(s) nuevo(s) de ${summary.messages} correo(s), pendientes de clasificar.`);
   return summary;}
  catch(e){await pool.query('UPDATE cc_google SET last_error=$2 WHERE organization_id=$1',[org(),e instanceof GoogleError?e.message:'No se completó la revisión de Gmail.']);throw e;}
  finally{await pool.query('UPDATE cc_google SET lease_until=NULL,lease_token=NULL WHERE organization_id=$1 AND lease_token=$2',[org(),lease]);}}

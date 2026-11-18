@@ -42,9 +42,9 @@ test('R1: la consulta a Gmail excluye salida y remitentes propios',()=>{
  assert.equal(defaultGmailSetting().own,'');
 });
 
-test('R1: la captura comprueba isIncoming antes de guardar ningún adjunto',()=>{
- const src=readFileSync('lib/gmail-capture.ts','utf8');const check=src.indexOf('if(!isIncoming('),store=src.indexOf('storeFile({');
- assert.ok(check>0&&store>check,'isIncoming debe ir antes de storeFile');
+test('(a) un correo de salida o propio nunca llega a la entrada de adjuntos ni al clasificador',()=>{
+ const src=readFileSync('lib/gmail-capture.ts','utf8');const check=src.indexOf('if(!isIncoming('),entry=src.indexOf('procesarAdjuntoEntrante({');
+ assert.ok(check>0&&entry>check,'isIncoming debe ir antes de procesarAdjuntoEntrante');
  assert.ok(src.includes('q:gmailQuery(after,own)'));
- assert.equal(src.split('storeFile({').length,2,'un solo punto donde el correo guarda adjuntos');
+ assert.equal(src.split('procesarAdjuntoEntrante({').length,2,'un solo punto donde el correo entrega adjuntos');
 });

@@ -4,7 +4,7 @@ import {handle} from '@/lib/api';
 import {getPool,org,audit,setSetting} from '@/lib/server-store';
 import {connection,GoogleError} from '@/lib/google';
 import {captureGmail,gmailSetting,saveGmailSetting,defaultGmailSetting} from '@/lib/gmail-capture';
-import {readPending} from '@/lib/documents';
+import {clasificarPendientes} from '@/lib/intake';
 export const runtime='nodejs';export const maxDuration=300;export const dynamic='force-dynamic';
 // Gestión de Gmail desde la app (como en Recepciones-IA): «save» guarda la configuración y deja la captura pausada,
 // «pause» la habilita o la pausa, y «capture» es «Comprobar ahora».
@@ -16,4 +16,4 @@ export async function POST(req:NextRequest){return handle(req,async()=>{const b=
   if(!b.paused&&!(await gmailSetting()))await setSetting('gmail',defaultGmailSetting());
   await getPool().query('UPDATE cc_google SET paused=$2 WHERE organization_id=$1',[org(),b.paused]);await audit('settings',b.paused?'Captura de Gmail pausada.':'Captura de Gmail habilitada.');return {saved:true};}
  const end=Date.now()+240_000,summary=await captureGmail(40_000),setting=await gmailSetting();
- return {...summary,read:setting?.autoRead?await readPending(end-60_000):null};});}
+ return {...summary,read:(setting?.autoRead??true)?await clasificarPendientes(end-60_000):null};});}
