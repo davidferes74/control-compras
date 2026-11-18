@@ -20,23 +20,29 @@ export type Tokens=z.infer<ReturnType<typeof tokensFor>>;
 export async function exchangeCode(code:string,scope=gmailScope):Promise<Tokens>{const res=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({code,client_id:process.env.GOOGLE_CLIENT_ID!,client_secret:process.env.GOOGLE_CLIENT_SECRET!,redirect_uri:googleRedirect(),grant_type:'authorization_code'}),signal:AbortSignal.timeout(15000),cache:'no-store'});if(!res.ok)throw new OAuthError('exchange');const parsed=tokensFor(scope).safeParse(await res.json());if(!parsed.success)throw new OAuthError('scope');return parsed.data;}
 export const missingScopes=(granted:string)=>[gmailScope].filter(s=>!granted.split(' ').includes(s));
 
-export class GoogleError extends Error{constructor(message:string,public status=502){super(message);}}
+/** «kind» distingue los fallos que el usuario puede arreglar: API sin activar en Google Cloud, cuenta sin acceso o permiso retirado. */
+export class GoogleError extends Error{constructor(message:string,public status=502,public kind:'api'|'denied'|'auth'|'other'='other'){super(message);}}
+/** Motivo de un 403 de Google: API sin activar en el proyecto, o permiso insuficiente. */
+export function forbiddenKind(body:unknown):'api'|'denied'{const e=(body as {error?:{message?:string;status?:string;errors?:{reason?:string}[];details?:{reason?:string}[]}}|null)?.error;const reasons=[...(e?.errors||[]),...(e?.details||[])].map(x=>String(x.reason||'')).join(' ')+' '+String(e?.message||'');return /accessNotConfigured|SERVICE_DISABLED|has not been used|is disabled|it is disabled/i.test(reasons)?'api':'denied';}
 type Stored={access_token:string;refresh_token:string;expires_at:number};
-export async function connection(){const r=await getPool().query('SELECT email,scopes,last_sync,last_error,secret FROM cc_google WHERE organization_id=$1',[org()]);return r.rows[0] as {email:string;scopes:string;last_sync:Date|null;last_error:string|null;secret:string}|undefined;}
+export async function connection(){const r=await getPool().query('SELECT email,scopes,last_sync,last_error,secret,paused FROM cc_google WHERE organization_id=$1',[org()]);return r.rows[0] as {email:string;scopes:string;last_sync:Date|null;last_error:string|null;secret:string;paused:boolean}|undefined;}
 export async function saveConnection(email:string,tokens:Tokens){const secret=seal(JSON.stringify({access_token:tokens.access_token,refresh_token:tokens.refresh_token,expires_at:Date.now()+tokens.expires_in*1000}),org());
- await getPool().query('INSERT INTO cc_google(organization_id,email,secret,scopes) VALUES($1,$2,$3,$4) ON CONFLICT(organization_id) DO UPDATE SET email=EXCLUDED.email,secret=EXCLUDED.secret,scopes=EXCLUDED.scopes,last_error=NULL,updated_at=now()',[org(),email,secret,tokens.scope]);}
+ await getPool().query('INSERT INTO cc_google(organization_id,email,secret,scopes) VALUES($1,$2,$3,$4) ON CONFLICT(organization_id) DO UPDATE SET email=EXCLUDED.email,secret=EXCLUDED.secret,scopes=EXCLUDED.scopes,paused=true,last_error=NULL,updated_at=now()',[org(),email,secret,tokens.scope]);}
+// La cuenta nueva o reconectada queda pausada (igual que en Recepciones-IA): el usuario revisa la configuración y habilita la captura.
 /** Token de acceso vigente de Gmail; lo renueva si caduca en menos de un minuto. */
 export async function accessToken():Promise<string>{if(!googleReady()||!encryptionReady())throw new GoogleError('Google no está configurado en el servidor.',503);const c=await connection();if(!c)throw new GoogleError('Conecta primero Gmail en Ajustes.',409);
- const t=JSON.parse(unseal(c.secret,org())) as Stored;if(t.expires_at>Date.now()+60_000)return t.access_token;
+ let t:Stored;try{t=JSON.parse(unseal(c.secret,org())) as Stored;}catch{throw new GoogleError('No se puede leer el permiso guardado de Gmail. Vuelve a conectar Gmail.',409,'auth');}
+ if(t.expires_at>Date.now()+60_000)return t.access_token;
  const res=await fetch('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({client_id:process.env.GOOGLE_CLIENT_ID!,client_secret:process.env.GOOGLE_CLIENT_SECRET!,refresh_token:t.refresh_token,grant_type:'refresh_token'}),signal:AbortSignal.timeout(12000),cache:'no-store'});
- if(!res.ok){await getPool().query("UPDATE cc_google SET last_error='Google ha retirado el permiso. Vuelve a conectar Gmail.' WHERE organization_id=$1",[org()]);throw new GoogleError('Google ha retirado el permiso. Vuelve a conectar Gmail en Ajustes.',409);}
+ if(!res.ok){await getPool().query("UPDATE cc_google SET last_error='Google ha retirado el permiso. Vuelve a conectar Gmail.' WHERE organization_id=$1",[org()]);throw new GoogleError('Google ha retirado el permiso. Vuelve a conectar Gmail en Ajustes.',409,'auth');}
  const u=z.object({access_token:z.string().min(1),expires_in:z.number().positive()}).parse(await res.json());
  await getPool().query('UPDATE cc_google SET secret=$2 WHERE organization_id=$1 AND secret=$3',[org(),seal(JSON.stringify({...t,access_token:u.access_token,expires_at:Date.now()+u.expires_in*1000}),org()),c.secret]);return u.access_token;}
 
 /** Petición autenticada a la API de Gmail, con tamaño de respuesta limitado. */
 export async function google(url:string,init:RequestInit={},token?:string):Promise<any>{const u=new URL(url);if(u.hostname!=='gmail.googleapis.com'||u.protocol!=='https:')throw new GoogleError('Destino de Google no permitido.');
  const res=await fetch(u,{...init,headers:{...(init.headers||{}),Authorization:'Bearer '+(token||await accessToken())},signal:AbortSignal.timeout(20000),cache:'no-store',redirect:'error'});
- if(!res.ok){const status=res.status;if(status===401||status===403)throw new GoogleError('Gmail ha rechazado el acceso. Vuelve a conectar Gmail.',409);if(status===404)throw new GoogleError('Gmail no encuentra el elemento.',404);throw new GoogleError('Gmail no responde ahora. Reintenta más tarde.');}
+ if(!res.ok){const status=res.status;if(status===401)throw new GoogleError('Gmail ha rechazado el acceso. Vuelve a conectar Gmail.',409,'auth');
+  if(status===403){const kind=forbiddenKind(await res.json().catch(()=>null));throw new GoogleError(kind==='api'?'La API de Gmail no está activada en el proyecto de Google Cloud de la app.':'Google no permite a la app leer el correo de esta cuenta.',409,kind);}if(status===404)throw new GoogleError('Gmail no encuentra el elemento.',404);throw new GoogleError('Gmail no responde ahora. Reintenta más tarde.');}
  if(res.status===204)return null;const reader=res.body?.getReader();if(!reader)return null;let size=0;const chunks:Uint8Array[]=[];while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>12*1024*1024){await reader.cancel();throw new GoogleError('Respuesta de Google demasiado grande.');}chunks.push(value);}
  return JSON.parse(Buffer.concat(chunks).toString('utf8')||'null');}
 export const gmail=(path:string,token?:string)=>google('https://gmail.googleapis.com/gmail/v1/users/me'+path,{},token);

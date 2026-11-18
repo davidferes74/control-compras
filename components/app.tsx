@@ -67,7 +67,7 @@ function InboxView({state,reload}:{state:AppState;reload:()=>Promise<void>}){
  async function sync(){setSyncing(true);setNotice('');try{const r=await api<{gmail?:{drafts:number;messages:number;more:boolean};gmailError?:string;read?:{read:number;pending:number};skipped?:string}>('/api/google/sync',{method:'POST'});
   setNotice(r.skipped||r.gmailError||(r.gmail?`${r.gmail.drafts} documento(s) nuevo(s) en ${r.gmail.messages} correo(s) revisado(s)${r.read?.read?`; ${r.read.read} leído(s) con IA`:''}${r.gmail.more?'. Quedan más: vuelve a pulsar.':'.'}`:'Revisión hecha.'));await reload();}catch(e){setNotice((e as Error).message);}finally{setSyncing(false);}}
  return <>
-  <PageHead eyebrow="ENTRADA" title="Bandeja">{state.google.connected&&state.gmail?.labels.length?<button className="btn" onClick={sync} disabled={syncing}>{syncing?<Loader2 size={16} className="spin"/>:<Mail size={16}/>}{syncing?'Revisando…':'Revisar correo'}</button>:null}</PageHead>
+  <PageHead eyebrow="ENTRADA" title="Bandeja">{state.google.connected&&!state.google.paused&&state.gmail?.labels.length?<button className="btn" onClick={sync} disabled={syncing}>{syncing?<Loader2 size={16} className="spin"/>:<Mail size={16}/>}{syncing?'Revisando…':'Revisar correo'}</button>:null}</PageHead>
   {notice&&<div className="alert info">{notice}</div>}
   <section className={'dropzone'+(drag?' over':'')} onDragOver={e=>{e.preventDefault();setDrag(true);}} onDragLeave={()=>setDrag(false)} onDrop={e=>{e.preventDefault();setDrag(false);send(e.dataTransfer.files);}}>
    <Upload size={26} aria-hidden="true"/><div><strong>Sube facturas y albaranes</strong><p>Arrastra aquí PDF o fotos, o elígelos. La IA los lee y tú revisas antes de confirmar.</p></div>

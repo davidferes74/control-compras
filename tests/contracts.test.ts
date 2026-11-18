@@ -44,3 +44,22 @@ test('Google: Gmail solo lectura y Drive limitado, cada uno con su autorización
  assert.ok(gmailScope.endsWith('/gmail.readonly'));
  assert.ok(driveScope.endsWith('/drive.file'),'nunca acceso completo a Drive');
 });
+
+import {gmailSettingSchema,passesFilters} from '../lib/gmail-capture';
+import {forbiddenKind as googleForbidden} from '../lib/google';
+test('Gmail: configuración con nombre, etiquetas, fecha y filtros; la antigua sigue valiendo',()=>{
+ const old=gmailSettingSchema.parse({labels:[{id:'INBOX',name:'INBOX'}],since:'2026-11-01',autoRead:true});
+ assert.equal(old.name,'Facturas Gmail');assert.equal(old.sender,'');assert.equal(old.subject,'');
+ assert.throws(()=>gmailSettingSchema.parse({labels:[],since:'01/11/2026',autoRead:true}));
+ assert.throws(()=>gmailSettingSchema.parse({name:'   ',labels:[],since:'2026-11-01',autoRead:true}));
+});
+test('Gmail: filtros «contiene» de remitente y asunto, sin distinguir mayúsculas',()=>{
+ assert.ok(passesFilters({sender:'',subject:''},'x@y.com','lo que sea'));
+ assert.ok(passesFilters({sender:'@Proveedor.com',subject:'FACTURA'},'Ana <ana@proveedor.com>','Su factura de noviembre'));
+ assert.ok(!passesFilters({sender:'@proveedor.com',subject:''},'otro@empresa.es','Factura'));
+ assert.ok(!passesFilters({sender:'',subject:'factura'},'ana@proveedor.com','Albarán 12'));
+});
+test('Gmail: un 403 distingue API sin activar de cuenta sin acceso',()=>{
+ assert.equal(googleForbidden({error:{message:'Gmail API has not been used in project 1 before or it is disabled.',errors:[{reason:'accessNotConfigured'}]}}),'api');
+ assert.equal(googleForbidden({error:{message:'Insufficient Permission'}}),'denied');
+});
