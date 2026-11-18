@@ -18,7 +18,7 @@ export type InvoiceStatus='ok'|'diff'|'missing'|'review';
 export type DeliveryStatus='invoiced'|'partial'|'pending';
 export const statusInfo:Record<string,{label:string;tone:string}>={ok:{label:'Conforme',tone:'success'},diff:{label:'Con diferencias',tone:'danger'},missing:{label:'Falta albarán',tone:'warning'},review:{label:'Revisar',tone:'info'},invoiced:{label:'Facturado',tone:'success'},partial:{label:'Facturado en parte',tone:'warning'},pending:{label:'Pendiente de facturar',tone:'neutral'}};
 export type ClassState='FACTURA'|'ALBARAN'|'DUDOSO'|'DESCARTADO';
-export type ClassInfo={classState:ClassState;classBy:string|null;classReason:string;detectedType:string;missingFields:string[];confidence:number|null;origin:'correo'|'escaneo'|'manual';duplicateOf:string|null};
+export type ClassInfo={classState:ClassState;classBy:string|null;classReason:string;detectedType:string;missingFields:string[];confidence:number|null;origin:'correo'|'escaneo'|'manual';duplicateOf:string|null;templateUsed:boolean};
 /** Fuera de los listados principales: descartados y duplicados enlazados a otro documento. */
 export const isArchived=(d:{classState:ClassState;duplicateOf:string|null})=>d.classState==='DESCARTADO'||Boolean(d.duplicateOf);
 export type ListItem=ClassInfo&{sender:string|null;receivedAt:string|null;id:string;kind:Kind;status:'draft'|'confirmed';supplier:string;number:string;date:string|null;total:string|null;matchStatus:string|null;deliveryRefs:string[];drive:boolean;driveError:string|null;warnings:number;source:'upload'|'gmail'|'manual';filename:string|null;lines:number;createdAt:string;issues:{kind:string;severity:string;message:string}[];pendingLines:number};

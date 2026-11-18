@@ -4,6 +4,8 @@ import {getPool,org,tx,audit} from './server-store';
 import {readFile,ReadError} from './ai-reader';
 import {decidirEstado,estadoTrasError,concilia,maxIntentos,motivoError,type Estado} from './classify-rules';
 import {PROMPT_VERSION,type Clasificacion} from './prompts/clasificador-documentos';
+import {findTemplates,templateContext} from './templates';
+import {isEInvoice} from './extraction';
 import {AppError,storeFile,insertDocument,fillDocument,findDuplicate,fromClasificacion,metaFrom,emptyInput,umbrales,recompute,readOriginal,rereadDraft,logClassification,kindLabel} from './documents';
 // Entrada única de adjuntos de correo y clasificador (R2, R3 y R6 de docs/requisitos-clasificacion.md).
 // Ningún otro código puede crear documentos a partir del correo: tests/clasificacion.test.ts lo comprueba.
@@ -38,16 +40,19 @@ export type Resultado={estado:Estado;blocked?:string;confirmed?:boolean;duplicat
  * Clasifica un documento del correo pendiente (o vuelve a clasificar un dudoso). La IA propone; las reglas de
  * classify-rules deciden. Un fallo de la IA nunca acaba en FACTURA, ALBARAN ni DESCARTADO.
  */
-export async function clasificarDocumento(id:string):Promise<Resultado>{
+export async function clasificarDocumento(id:string,opts:{fresh?:boolean}={}):Promise<Resultado>{
  const pool=getPool();
  const r=await pool.query('SELECT d.file_id,d.class_state,d.status,d.origin,f.mime,f.parent_file_id,f.filename,f.source_ref,f.sender,f.subject,f.received_at FROM cc_documents d JOIN cc_files f ON f.id=d.file_id WHERE d.id=$1 AND d.organization_id=$2',[id,org()]);
  if(!r.rowCount)throw new AppError('Documento no encontrado.',404);const row=r.rows[0];
  if(row.origin!=='correo')throw new AppError('Solo se clasifican los documentos recibidos por correo.',400);
  if(row.status!=='draft'||!['PENDIENTE_CLASIFICACION','DUDOSO'].includes(row.class_state))throw new AppError('Solo se clasifica un documento pendiente o dudoso.',409);
+ // R5: si el proveedor tiene plantilla validada se pasa a la IA como ayuda. No exime de clasificar: el documento
+ // sigue el mismo camino (lectura con el prompt único y reglas de classify-rules) con plantilla o sin ella.
+ const templates=await findTemplates(row.sender,isEInvoice(row.mime)?(await readOriginal(row.file_id)).bytes.toString('utf8').slice(0,200_000):null),context=templateContext(templates);
  let x:Clasificacion|undefined;
  for(let intento=1;intento<=maxIntentos&&!x;intento++){
   await pool.query("UPDATE cc_files SET read_state='pending' WHERE id=$1 AND organization_id=$2 AND read_state='error'",[row.file_id,org()]);
-  try{x=await readFile(row.file_id);}
+  try{x=await readFile(row.file_id,{context,fresh:opts.fresh&&intento===1});}
   catch(e){if(!(e instanceof ReadError))throw e;
    // Límite diario, clave o lectura en curso: no es un error de clasificación; el documento se queda como estaba.
    if(e.kind!=='ai')return {estado:row.class_state,blocked:e.message};
@@ -56,6 +61,9 @@ export async function clasificarDocumento(id:string):Promise<Resultado>{
      await logClassification(c,id,{classState:'DUDOSO',classBy:'ia',reason,promptVersion:PROMPT_VERSION});});
     return {estado:'DUDOSO'};}}}
  if(!x)return {estado:row.class_state,blocked:'No se completó la lectura.'};
+ if(!templates.length)x={...x,coincide_con_plantilla:'sin_plantilla'};
+ // Formato cambiado: se extrae de nuevo sin la plantilla. Las reglas lo dejan DUDOSO y, al validarlo, se actualiza la plantilla.
+ else if(x.coincide_con_plantilla==='no'){try{x={...await readFile(row.file_id,{fresh:true}),coincide_con_plantilla:'no'};}catch{/* se conserva la lectura hecha con la plantilla */}}
  // Varios documentos en un PDF: se separa por páginas y cada parte se clasifica por separado.
  if(x.partes.length>1&&row.mime==='application/pdf'&&!row.parent_file_id){const n=await separar(row.file_id,row,x.partes);
   if(n){const d=decidirEstado(x),reason=`El archivo contiene ${x.partes.length} documentos (${x.partes.map(p=>p.tipo).join(', ')}): se ha separado por páginas y cada parte se clasifica aparte.`;
@@ -70,6 +78,8 @@ export async function clasificarDocumento(id:string):Promise<Resultado>{
   const dup=concilia(d.estado)?await findDuplicate(c,id,input):null,confirmed=concilia(d.estado)&&!dup;
   const meta=metaFrom(x,d,d.estado,'correo','ia');if(dup)meta.reason=`Ya estaba registrado ${kindLabel[d.kind]==='Factura'?'la factura':kindLabel[d.kind]==='Albarán'?'el albarán':'el abono'} ${dup.number} de este proveedor: se ha enlazado con él y no cuenta dos veces.`;
   await fillDocument(c,id,input,warnings,meta,{status:confirmed?'confirmed':'draft',duplicateOf:dup?.id||null});
+  const template=templates.find(t=>t.kind===d.kind)||templates[0];
+  if(template)await c.query('UPDATE cc_documents SET template_id=$2,template_used=true WHERE id=$1',[id,template.id]);
   if(confirmed)await recompute(c);
   await audit('classify',`Clasificado como ${d.estado}${dup?' (duplicado)':''}: ${x.tipo_documento||'documento'} ${input.number||'sin número'}${input.supplier?' de '+input.supplier:''}. ${d.motivo}`,id,c);
   return {estado:d.estado,confirmed,duplicate:Boolean(dup)};});}
@@ -89,4 +99,4 @@ export async function clasificarPendientes(until:number){
 export async function releer(id:string){
  const r=await getPool().query('SELECT origin FROM cc_documents WHERE id=$1 AND organization_id=$2',[id,org()]);if(!r.rowCount)throw new AppError('Documento no encontrado.',404);
  if(r.rows[0].origin!=='correo')return rereadDraft(id);
- const res=await clasificarDocumento(id);if(res.blocked)throw new AppError(res.blocked,503);}
+ const res=await clasificarDocumento(id,{fresh:true});if(res.blocked)throw new AppError(res.blocked,503);}

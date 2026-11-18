@@ -3,12 +3,12 @@
 import {randomUUID} from 'node:crypto';
 import {getPool,org} from '../lib/server-store';
 import {procesarAdjuntoEntrante,clasificarDocumento,clasificarPendientes} from '../lib/intake';
-import {listDocuments,pendingCount,discardDocument,recoverDocument,getDocument} from '../lib/documents';
+import {listDocuments,pendingCount,discardDocument,recoverDocument,getDocument,saveDocument} from '../lib/documents';
 import {PROMPT_VERSION} from '../lib/prompts/clasificador-documentos';
 if(!/127\.0\.0\.1|localhost/.test(process.env.DATABASE_URL||''))throw new Error('Solo contra una base de datos local.');
 const run=randomUUID().slice(0,8),nif='B'+run.replace(/\D/g,'').padEnd(8,'7').slice(0,8);
 const linea={code:'T01',description:'Tomate',quantity:'10',unit:'kg',unitPrice:'1.20',discountPct:'',amount:'12.00',deliveryRef:'',page:1};
-const base={confianza:0.95,coincide_con_plantilla:'sin_plantilla',campos_faltantes:[] as string[],partes:[] as unknown[]};
+const base={confianza:0.95,coincide_con_plantilla:'sin_plantilla',campos_faltantes:[] as string[],partes:[] as unknown[],formato:{etiquetas:'Número arriba a la derecha; tabla de líneas en el centro; totales abajo.',numeracion:'F-0000',fecha:'DD/MM/AAAA',importes:'1.234,56 €'}};
 const datos={supplier:'Proveedor '+run,supplierTaxId:nif,recipient:'Sentidiño',recipientTaxId:'B00000000',number:'',date:'2026-11-10',orderNumber:'',currency:'EUR',deliveryRefs:[] as string[],subtotal:'',tax:'',total:'',warnings:[] as string[],lines:[linea]};
 const albaran={...base,estado:'ALBARAN',tipo_documento:'albarán',clase:'albaran',motivo:'Albarán de entrega.',datos:{...datos,number:'ALB-'+run}};
 const factura={...base,estado:'FACTURA',tipo_documento:'factura',clase:'factura',motivo:'Factura completa.',datos:{...datos,number:'F-'+run,deliveryRefs:['ALB-'+run],subtotal:'12.00',tax:'1.20',total:'13.20',lines:[{...linea,deliveryRef:'ALB-'+run}]}};
@@ -23,6 +23,14 @@ async function main(){
  console.log('pendientes tras la entrada:',await pendingCount(),'| visibles de esta tanda:',(await listDocuments()).filter(d=>Object.values(ids).includes(d.id)).length);
  for(const [k,id] of Object.entries(ids))console.log(k,'→',JSON.stringify(await clasificarDocumento(id)),JSON.stringify(await estado(id)));
  console.log('factura tras conciliar:',JSON.stringify(await estado(ids.factura)),'| albarán:',JSON.stringify(await estado(ids.albaran)));
+ // R5: una persona valida la dudosa → se crea la plantilla del proveedor; el siguiente documento del mismo remitente la usa.
+ const dd=await getDocument(ids.dudosa);await saveDocument(ids.dudosa,{kind:dd.kind,supplier:dd.supplier,supplierTaxId:dd.supplierTaxId,number:dd.number+'-OK',date:dd.date,deliveryRefs:[],subtotal:dd.subtotal,tax:dd.tax,total:dd.total,lines:dd.lines.map(l=>({code:l.code,description:l.description,quantity:l.quantity,unit:l.unit,unitPrice:l.unitPrice,discountPct:l.discountPct,amount:l.amount,deliveryRef:l.deliveryRef}))},true);
+ const t=(await getPool().query('SELECT t.kind,t.senders,t.corrections,t.uses,t.format IS NOT NULL AS fmt FROM cc_templates t JOIN cc_documents d ON d.template_id=t.id WHERE d.id=$1',[ids.dudosa])).rows[0];
+ console.log('dudosa validada:',JSON.stringify(await estado(ids.dudosa)),'| plantilla:',JSON.stringify(t));
+ const conPlantilla=await entra('con-plantilla',{...factura,coincide_con_plantilla:'si',datos:{...factura.datos,number:'F3-'+run,deliveryRefs:[]}});
+ console.log('siguiente del mismo remitente →',JSON.stringify(await clasificarDocumento(conPlantilla)),JSON.stringify((await getPool().query('SELECT template_used,template_id IS NOT NULL AS tid,class_state,status FROM cc_documents WHERE id=$1',[conPlantilla])).rows[0]));
+ const presupuesto=await entra('presupuesto',{...publi,tipo_documento:'presupuesto',coincide_con_plantilla:'si',motivo:'Es un presupuesto, no una factura.'});
+ console.log('presupuesto de proveedor con plantilla →',JSON.stringify(await clasificarDocumento(presupuesto)));
  // Sin clave: no es un error de clasificación; el documento sigue pendiente y oculto.
  delete process.env.ANTHROPIC_API_KEY;const sinLeer=await entra('sin-leer',null);
  console.log('sin clave →',JSON.stringify(await clasificarPendientes(Date.now()+10_000)),JSON.stringify(await estado(sinLeer)),'| ¿visible?',(await listDocuments()).some(d=>d.id===sinLeer));

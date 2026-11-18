@@ -2,7 +2,7 @@ import {z} from 'zod';
 // ÚNICA fuente de verdad del clasificador de documentos (R6, docs/requisitos-clasificacion.md).
 // Prohibido duplicar este prompt o montar otro en cualquier parte del código: tests/clasificacion.test.ts lo comprueba.
 // Si cambias el texto o el esquema, sube PROMPT_VERSION: se guarda con cada clasificación (auditoría).
-export const PROMPT_VERSION='2026-11-18.1';
+export const PROMPT_VERSION='2026-11-18.2';
 
 export const estadosIA=['FACTURA','ALBARAN','DUDOSO','DESCARTADO'] as const;
 export const clases=['factura','albaran','abono','ninguna'] as const;
@@ -37,6 +37,7 @@ Devuelve únicamente el JSON con estos campos:
 - clase: cómo debe tratarse si se acepta: "factura", "albaran", "abono" (abono o factura rectificativa) o "ninguna" si no es nada de eso. En DUDOSO, el tipo probable.
 - motivo, coincide_con_plantilla, campos_faltantes (lista de datos esenciales que no aparecen).
 - partes: si el archivo contiene VARIOS documentos distintos (por ejemplo una factura y su albarán, o dos facturas), una entrada por documento con sus páginas (desde, hasta) y su tipo; en ese caso no extraigas datos. Si es un solo documento, lista vacía.
+- formato: rasgos del formato del documento, en frases cortas, para reconocer los próximos documentos de este proveedor. etiquetas: cómo se llaman y dónde están aproximadamente los campos clave (número, fecha, NIF, base, total, tabla de líneas). numeracion: patrón del número de documento. fecha: formato de fecha. importes: formato de los importes (separadores, moneda). En DESCARTADO, todo vacío.
 - datos: los datos leídos. En DESCARTADO, todos vacíos y lines vacío.
 
 Datos (factura, albarán, abono o el tipo probable de un dudoso):
@@ -64,6 +65,7 @@ export const clasificacionSchema=z.object({
  coincide_con_plantilla:z.enum(['si','no','sin_plantilla']),
  campos_faltantes:z.array(text).max(30),
  partes:z.array(z.object({desde:z.number().int().min(1).max(200),hasta:z.number().int().min(1).max(200),tipo:text})).max(20),
+ formato:z.object({etiquetas:z.string().max(1500),numeracion:text,fecha:text,importes:text}),
  datos:z.object({
   supplier:optText,supplierTaxId:z.string().max(30).transform(blank),recipient:optText,recipientTaxId:z.string().max(30).transform(blank),
   number:optText,date:optDate,orderNumber:optText,currency:z.string().max(10).transform(blank),
@@ -77,7 +79,7 @@ const obj=(properties:Record<string,object>)=>({type:'object',additionalProperti
 export const clasificacionJsonSchema=obj({
  estado:{type:'string',enum:[...estadosIA]},confianza:n,tipo_documento:s,clase:{type:'string',enum:[...clases]},motivo:s,
  coincide_con_plantilla:{type:'string',enum:['si','no','sin_plantilla']},campos_faltantes:list(s),
- partes:list(obj({desde:i,hasta:i,tipo:s})),
+ partes:list(obj({desde:i,hasta:i,tipo:s})),formato:obj({etiquetas:s,numeracion:s,fecha:s,importes:s}),
  datos:obj({supplier:s,supplierTaxId:s,recipient:s,recipientTaxId:s,number:s,date:s,orderNumber:s,currency:s,deliveryRefs:list(s),subtotal:s,tax:s,total:s,warnings:list(s),
   lines:list(obj({code:s,description:s,quantity:s,unit:s,unitPrice:s,discountPct:s,amount:s,deliveryRef:s,page:i}))})
 });

@@ -7,7 +7,7 @@ import {decidirEstado,estadoTrasError,estadosVisibles,concilia,estados,umbralesI
 // Blindaje de los invariantes R2, R3, R4 y R6 (docs/requisitos-clasificacion.md). Las letras son las de R7.
 
 const linea={code:'T01',description:'Tomate',quantity:'10',unit:'kg',unitPrice:'1.20',discountPct:'',amount:'12.00',deliveryRef:'ALB-1',page:1};
-const factura={estado:'FACTURA',confianza:0.95,tipo_documento:'factura',clase:'factura',motivo:'Factura completa con número, NIF, base, IVA y total.',coincide_con_plantilla:'sin_plantilla',campos_faltantes:[],partes:[],
+const factura={estado:'FACTURA',confianza:0.95,tipo_documento:'factura',clase:'factura',motivo:'Factura completa con número, NIF, base, IVA y total.',coincide_con_plantilla:'sin_plantilla',campos_faltantes:[],partes:[],formato:{etiquetas:'Número arriba a la derecha; tabla de líneas en el centro; totales abajo.',numeracion:'F-0000',fecha:'DD/MM/AAAA',importes:'1.234,56 €'},
  datos:{supplier:'Frutas Pérez SL',supplierTaxId:'B12345678',recipient:'Sentidiño SL',recipientTaxId:'B87654321',number:'F-1',date:'2026-11-10',orderNumber:'',currency:'EUR',deliveryRefs:['ALB-1'],subtotal:'12.00',tax:'1.20',total:'13.20',warnings:[],lines:[linea]}};
 const albaran={...factura,estado:'ALBARAN',tipo_documento:'albarán',clase:'albaran',motivo:'Albarán de entrega con líneas y cantidades.',datos:{...factura.datos,number:'ALB-1',deliveryRefs:[],subtotal:'',tax:'',total:''}};
 type Raw=Record<string,unknown>;

@@ -14,7 +14,8 @@ export class ReadError extends Error{constructor(message:string,public status:nu
 let client:Anthropic|undefined;
 const anthropic=()=>client??=new Anthropic({apiKey:process.env.ANTHROPIC_API_KEY,timeout:55_000,maxRetries:1});
 
-export async function readFile(fileId:string):Promise<Clasificacion>{
+/** «context»: plantilla del proveedor, como dato de ayuda. «fresh»: no reutiliza una lectura anterior del archivo. */
+export async function readFile(fileId:string,opts:{context?:string|null;fresh?:boolean}={}):Promise<Clasificacion>{
  if(!process.env.ANTHROPIC_API_KEY)throw new ReadError('Falta ANTHROPIC_API_KEY en Vercel. Guárdala y vuelve a desplegar.',503,'config');
  const pool=getPool();
  // Reserva: un solo intento a la vez por archivo y dentro del límite diario.
@@ -23,7 +24,7 @@ export async function readFile(fileId:string):Promise<Clasificacion>{
   const r=await c.query('SELECT mime,bytes,read_state,read_result,prompt_version,updated_at FROM cc_files WHERE id=$1 AND organization_id=$2 FOR UPDATE',[fileId,org()]);
   if(!r.rowCount)throw new ReadError('Archivo no encontrado.',404);const row=r.rows[0];
   // Una lectura hecha con otra versión del prompt (o con el formato anterior) no vale: se vuelve a leer.
-  if(row.read_state==='ready'&&row.prompt_version===PROMPT_VERSION){const cached=clasificacionSchema.safeParse(row.read_result);if(cached.success){await c.query('COMMIT');return cached.data;}}
+  if(!opts.fresh&&row.read_state==='ready'&&row.prompt_version===PROMPT_VERSION){const cached=clasificacionSchema.safeParse(row.read_result);if(cached.success){await c.query('COMMIT');return cached.data;}}
   if(row.read_state==='reading'&&Date.now()-new Date(row.updated_at).getTime()<120_000)throw new ReadError('La lectura de este archivo ya está en curso.',409,'busy');
   await c.query('INSERT INTO cc_ai_daily(organization_id) VALUES($1) ON CONFLICT DO NOTHING',[org()]);
   const budget=await c.query('UPDATE cc_ai_daily SET calls=calls+1 WHERE organization_id=$1 AND day=CURRENT_DATE AND calls<$2 RETURNING calls',[org(),dailyLimit()]);
@@ -38,7 +39,7 @@ export async function readFile(fileId:string):Promise<Clasificacion>{
   ?{type:'document',source:{type:'base64',media_type:'application/pdf',data}}
   :{type:'image',source:{type:'base64',media_type:file.mime as 'image/jpeg'|'image/png'|'image/webp',data}};
  let response:Anthropic.Message;
- try{response=await anthropic().messages.create({model:readerModel(),max_tokens:16000,system:clasificadorSistema,output_config:{format:{type:'json_schema',schema:clasificacionJsonSchema}},messages:[{role:'user',content:[block,{type:'text',text:clasificadorTarea}]}]});}
+ try{response=await anthropic().messages.create({model:readerModel(),max_tokens:16000,system:clasificadorSistema,output_config:{format:{type:'json_schema',schema:clasificacionJsonSchema}},messages:[{role:'user',content:[block,...(opts.context?[{type:'text' as const,text:opts.context}]:[]),{type:'text',text:clasificadorTarea}]}]});}
  catch(e){
   // Solo el tipo de error, nunca la clave ni el contenido del documento.
   console.error('Lectura con IA fallida:',e instanceof Anthropic.APIError?`${e.status} ${e.name}`:e instanceof Error?e.name:'desconocido');

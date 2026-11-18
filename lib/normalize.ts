@@ -13,3 +13,5 @@ export const supplierKey=(name:string)=>normText(name).replace(legal,' ').replac
 const tokens=(s:string)=>new Set(normText(s).split(' ').filter(t=>t.length>=2));
 /** Parecido entre descripciones (coeficiente de Dice sobre palabras). 1 = mismas palabras. */
 export function similarity(a:string,b:string){const x=tokens(a),y=tokens(b);if(!x.size||!y.size)return 0;let common=0;for(const t of x)if(y.has(t))common++;return 2*common/(x.size+y.size);}
+/** Dirección del remitente en minúsculas: «Nombre <a@b.c>» → «a@b.c». Vacío si no se reconoce. */
+export const senderAddress=(from:string)=>(from.match(/<([^<>\s]+@[^<>\s]+)>/)?.[1]||from.match(/[^\s<>"',;:()]+@[^\s<>"',;:()]+/)?.[0]||'').toLowerCase();

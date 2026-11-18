@@ -28,6 +28,7 @@ export function decidirEstado(c:Clasificacion,u:Umbrales=umbralesIniciales):Deci
  if(c.estado==='DESCARTADO')return c.confianza>=u.descartado?{estado:'DESCARTADO',kind,motivo,faltan:[]}:dudoso(`Podría no ser una factura ni un albarán, pero no es seguro: ${motivo}`);
  if(c.estado==='DUDOSO')return dudoso(motivo);
  if(/pro[\s-]?forma/i.test(c.tipo_documento))return dudoso('Es una factura proforma: no es una factura definitiva.');
+ if(c.coincide_con_plantilla==='no')return dudoso('El formato no coincide con la plantilla guardada de este proveedor. Revísalo: al validarlo se actualizará la plantilla.');
  if(c.estado==='FACTURA'){
   if(kind==='delivery_note')return dudoso('La IA lo da por factura pero lo describe como albarán.');
   const faltan=[!d.number&&'número de factura',!d.date&&'fecha',!d.supplier&&'emisor',!d.supplierTaxId&&'NIF del emisor',!d.total&&'total',kind==='invoice'&&!d.lines.length&&'líneas'].filter(Boolean) as string[];
