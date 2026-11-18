@@ -4,6 +4,7 @@ import {getPool,org,getSetting,setSetting,audit} from './server-store';
 import {accessToken,gmail,connection,GoogleError} from './google';
 import {readMessage,maxMessageBytes} from './mail-items';
 import {procesarAdjuntoEntrante} from './intake';
+import {senderAddress} from './normalize';
 // Captura de adjuntos desde Gmail: revisa las etiquetas elegidas y entrega cada PDF o factura electrónica a la
 // entrada única (procesarAdjuntoEntrante), que lo deja pendiente de clasificar. Cada correo se procesa una sola vez (cc_gmail_seen).
 // Configuración como en Recepciones-IA: nombre, etiquetas, fecha inicial y filtros «contiene» de remitente y asunto.
@@ -14,8 +15,7 @@ export const gmailSetting=async()=>{const s=await getSetting<Partial<GmailSettin
 /** ¿Pasa el correo los filtros de remitente y asunto? Comparación «contiene», sin distinguir mayúsculas. */
 export const passesFilters=(s:Pick<GmailSetting,'sender'|'subject'>,from:string,subject:string)=>(!s.sender||from.toLowerCase().includes(s.sender.toLowerCase()))&&(!s.subject||subject.toLowerCase().includes(s.subject.toLowerCase()));
 // ---------- R1: solo correos de entrada (ver docs/requisitos-clasificacion.md) ----------
-/** Dirección del remitente en minúsculas: «Nombre <a@b.c>» → «a@b.c». Vacío si no se reconoce. */
-export const senderAddress=(from:string)=>(from.match(/<([^<>\s]+@[^<>\s]+)>/)?.[1]||from.match(/[^\s<>"',;:()]+@[^\s<>"',;:()]+/)?.[0]||'').toLowerCase();
+export {senderAddress};
 /** Cuentas y dominios propios: la lista de Ajustes más la cuenta conectada. Un dominio incluye sus subdominios. */
 export const ownEntries=(own:string,account?:string|null)=>[...new Set([...own.split(/[\s,;]+/),account||''].map(x=>x.trim().toLowerCase().replace(/^@/,'')).filter(Boolean))];
 const notIncomingLabels=['SENT','DRAFT','SPAM','TRASH'];

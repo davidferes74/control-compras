@@ -23,8 +23,9 @@ Avance (18-11-2026):
 - R2 y R3 (entrada única, estados, descartar sin borrar, PDF con varios documentos): `lib/intake.ts`, `lib/documents.ts`, `migrations/004_clasificacion.sql`.
 - R4 (criterios y umbrales): `lib/classify-rules.ts`. Umbrales en el ajuste `clasificador` de `cc_settings` (por defecto 0,85).
 - R6 (prompt único y versionado): `lib/prompts/clasificador-documentos.ts`. Es el texto base de abajo adaptado a los campos de la app; los datos que no aparecen se devuelven como cadena vacía en lugar de null.
-- Pruebas de blindaje: `tests/clasificacion.test.ts` (b, c, d, f, g, h, i) y `tests/correo-entrada.test.ts` (a).
-- Pendiente: R5 (plantillas de proveedor, prueba e), pantalla para cambiar los umbrales y reclasificación de los documentos anteriores (requiere confirmación del propietario).
+- R5 (plantillas de proveedor): `lib/templates.ts`, `migrations/005_plantillas.sql`. Se aprende solo cuando una persona valida o corrige (`saveDocument`); la plantilla se pasa a la IA como dato de ayuda y nunca decide el estado. El proveedor se reconoce por el remitente del correo y, en facturas electrónicas, por el NIF dentro del texto; en un PDF el NIF no se puede buscar antes de leerlo, así que la primera vez que un proveedor escribe desde una dirección nueva se lee sin plantilla.
+- Pruebas de blindaje: `tests/clasificacion.test.ts` (b, c, d, f, g, h, i), `tests/correo-entrada.test.ts` (a) y `tests/plantillas.test.ts` (e).
+- Pendiente: pantalla para cambiar los umbrales, listado de plantillas en Ajustes y reclasificación de los documentos anteriores (requiere confirmación del propietario).
 
 # TAREA: Filtro de correos entrantes + clasificación obligatoria de documentos con IA
 
