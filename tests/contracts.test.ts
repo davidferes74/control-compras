@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {extractionSchema,outputSchema,detectType} from '../lib/extraction';
 import {documentInput} from '../lib/documents';
 import {parseDecimal,showDecimal} from '../components/lib';
-import {scopes,missingScopes} from '../lib/google';
+import {gmailScope,driveScope,missingScopes} from '../lib/google';
 
 const reading={documentType:'invoice',typeEvidence:'FACTURA',supplier:'Frutas Pérez SL',supplierTaxId:'B12345678',number:'F-1',date:'2026-11-10',deliveryRefs:['ALB-1'],subtotal:'16.00',tax:'1.60',total:'17.60',warnings:[],
  lines:[{code:'T01',description:'Tomate',quantity:'10',unit:'kg',unitPrice:'1.20',discountPct:null,amount:'12.00',deliveryRef:'ALB-1',page:1}]};
@@ -38,8 +38,9 @@ test('el formulario rechaza números mal formados y tipos desconocidos',()=>{
  assert.throws(()=>documentInput.parse({...ok,kind:'order'}));
 });
 
-test('Google: se exigen los dos permisos (Gmail lectura y Drive limitado)',()=>{
- assert.deepEqual(missingScopes(scopes.join(' ')),[]);
- assert.equal(missingScopes('https://www.googleapis.com/auth/gmail.readonly').length,1);
- assert.ok(!scopes.some(s=>s.endsWith('/auth/drive')),'nunca acceso completo a Drive');
+test('Google: Gmail solo lectura y Drive limitado, cada uno con su autorización',()=>{
+ assert.deepEqual(missingScopes(gmailScope),[]);
+ assert.equal(missingScopes(driveScope).length,1,'el permiso de Drive no sirve para Gmail');
+ assert.ok(gmailScope.endsWith('/gmail.readonly'));
+ assert.ok(driveScope.endsWith('/drive.file'),'nunca acceso completo a Drive');
 });
