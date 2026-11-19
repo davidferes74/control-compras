@@ -1,7 +1,7 @@
 'use client';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Inbox,FileText,Truck,AlertTriangle,History,Settings2,Archive,Sparkles,Upload,Camera,Plus,Search,LogOut,Mail,FileCheck2,Loader2,ChevronRight,RefreshCw} from 'lucide-react';
-import {api,money,date,dateTime,kindLabel,isArchived,type AppState,type ListItem,type Kind} from './lib';
+import {api,money,date,dateTime,kindLabel,isArchived,setNavList,type AppState,type ListItem,type Kind} from './lib';
 import DocumentView from './document-view';
 import SettingsView from './settings';
 import Sheet from './sheet';
@@ -90,7 +90,7 @@ function InboxView({state,reload}:{state:AppState;reload:()=>Promise<void>}){
  </>;}
 
 
-function DocTable({items,showKind}:{items:ListItem[];showKind?:boolean}){return <div className="doc-table" role="table">
+function DocTable({items,showKind}:{items:ListItem[];showKind?:boolean}){useNavList(items);return <div className="doc-table" role="table">
  <div className="doc-row head" role="row"><span role="columnheader">Documento</span><span role="columnheader">Fecha</span><span role="columnheader" className="num">Total</span><span role="columnheader">Estado</span><span/></div>
  {items.map(d=><a key={d.id} href={'#doc/'+d.id} className={'doc-row tone-'+(d.status==='draft'?'draft':d.matchStatus||'none')} role="row">
   <span className="doc-main" role="cell" title={[d.number,d.supplier,d.deliveryRefs.join(", ")].filter(Boolean).join(" · ")}><strong>{showKind&&<em>{kindLabel[d.kind]} · </em>}{d.number||'Sin número'}</strong><small>{d.supplier||'Proveedor sin identificar'}{d.origin==='correo'?' · Correo':d.origin==='escaneo'?' · Escaneo':''}{d.templateUsed?' · Plantilla':''}{d.classState==='DUDOSO'&&d.classReason?' · '+d.classReason:''}{d.kind==='invoice'&&d.deliveryRefs.length?' · Alb. '+d.deliveryRefs.slice(0,3).join(', ')+(d.deliveryRefs.length>3?'…':''):''}</small></span>
@@ -112,7 +112,10 @@ function ListView({kind,items}:{kind:Kind;items:ListItem[]}){
    <label className="search"><Search size={16}/><input placeholder="Buscar número o proveedor" type="search" enterKeyHint="search" autoCapitalize="none" autoCorrect="off" value={q} onChange={e=>setQ(e.target.value)} aria-label="Buscar"/></label></div>
   <section className="panel">{!shown.length?<Empty title={mine.length?'Ningún resultado':'Todavía no hay '+(kind==='invoice'?'facturas':'albaranes')} text={mine.length?'Prueba con otro filtro.':'Confirma documentos desde la Bandeja.'}/>:<DocTable items={shown} showKind={kind==='invoice'}/>}</section></>;}
 
-function DiscardedView({items,reload}:{items:ListItem[];reload:()=>Promise<void>}){const [busy,setBusy]=useState(''),[error,setError]=useState('');
+/** Guarda el orden de la lista visible para el botón «Siguiente» del documento. */
+function useNavList(items:ListItem[]){const key=items.map(d=>d.id).join(',');useEffect(()=>{setNavList(key?key.split(','):[]);},[key]);}
+
+function DiscardedView({items,reload}:{items:ListItem[];reload:()=>Promise<void>}){useNavList(items);const [busy,setBusy]=useState(''),[error,setError]=useState('');
  async function recover(id:string,kind:'invoice'|'delivery_note'){setBusy(id);setError('');try{await api('/api/documents/'+id,{method:'POST',body:JSON.stringify({action:'recover',kind})});await reload();go('doc/'+id);}catch(e){setError((e as Error).message);}finally{setBusy('');}}
  return <><PageHead eyebrow="ARCHIVO" title="Descartados"/>
   <p className="muted">Documentos que no son factura ni albarán, o que ya estaban registrados. Nada se borra: puedes recuperarlos.</p>{error&&<div className="alert danger" role="alert">{error}</div>}
@@ -122,7 +125,7 @@ function DiscardedView({items,reload}:{items:ListItem[];reload:()=>Promise<void>
      <p>{d.classReason||'Sin motivo indicado.'}</p></div>
     <div className="discarded-actions"><a className="btn small" href={'#doc/'+d.id}>Ver</a>{d.classState==='DESCARTADO'&&<><button className="btn small" disabled={busy===d.id} onClick={()=>recover(d.id,'invoice')}>Es una factura</button><button className="btn small" disabled={busy===d.id} onClick={()=>recover(d.id,'delivery_note')}>Es un albarán</button></>}</div></li>)}</ul>}</section></>;}
 
-function IssuesView({items}:{items:ListItem[]}){return <><PageHead eyebrow="REVISIÓN" title="Diferencias"/>
+function IssuesView({items}:{items:ListItem[]}){useNavList(items);return <><PageHead eyebrow="REVISIÓN" title="Diferencias"/>
  {!items.length?<section className="panel"><Empty title="Sin diferencias abiertas" text="Todas las facturas confirmadas cuadran con sus albaranes o tienen las diferencias aceptadas."/></section>:
  <div className="issue-cards">{items.map(d=><a key={d.id} href={'#doc/'+d.id} className={'issue-card tone-'+d.matchStatus}><div className="issue-card-head"><div><strong>Factura {d.number}</strong><small>{d.supplier} · {date(d.date)} · {money(d.total)}</small></div><StatusBadge item={d}/></div>
   <ul>{d.issues.slice(0,4).map((x,i)=><li key={i}>{x.message}</li>)}</ul>{d.issues.length>4&&<p className="muted">y {d.issues.length-4} más…</p>}</a>)}</div>}</>;}
