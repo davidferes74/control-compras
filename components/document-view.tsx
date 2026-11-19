@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
-import {ArrowLeft,Check,CheckCircle2,AlertTriangle,Info,Loader2,Plus,Sparkles,Trash2,X,Eye,EyeOff,ExternalLink,RotateCcw,HelpCircle} from 'lucide-react';
-import {api,money,qty,date,parseDecimal,showDecimal,kindLabel,statusInfo,type FullDocument,type Kind,type InvoiceMatch,type DeliveryState } from './lib';
+import {ArrowLeft,ArrowRight,Check,CheckCircle2,AlertTriangle,Info,Loader2,Plus,Sparkles,Trash2,X,Eye,EyeOff,ExternalLink,RotateCcw,HelpCircle} from 'lucide-react';
+import {api,money,qty,date,parseDecimal,showDecimal,kindLabel,statusInfo,navInfo,type FullDocument,type Kind,type InvoiceMatch,type DeliveryState } from './lib';
 import {Badge,StatusBadge,ClassBadge,HoldButton,go} from './ui';
 
 type FormLine={code:string;description:string;quantity:string;unit:string;unitPrice:string;discountPct:string;amount:string;deliveryRef:string};
@@ -36,10 +36,14 @@ export default function DocumentView({id,onChanged}:{id:string;onChanged:()=>Pro
  const pct=doc.confidence===null?'':` · confianza ${Math.round(doc.confidence*100)} %`;
  const decide=(key:string,reason:string|null)=>run('decide',async()=>{apply(await api<FullDocument>(`/api/documents/${id}/decisions`,{method:'POST',body:JSON.stringify({key,reason})}));await onChanged();});
  const fileUrl=doc.file?'/api/files/'+doc.file.id:null;
+ // «Siguiente»: el siguiente documento de la lista de la que se vino. Sustituye la entrada del historial,
+ // de modo que «Volver» sigue llevando a la lista y no al documento anterior.
+ const nav=navInfo(id);
+ const next=()=>{if(!nav?.next)return;if(dirty&&!window.confirm('Hay cambios sin guardar. ¿Pasar al siguiente sin guardarlos?'))return;window.location.replace('#doc/'+nav.next);};
  return <div className="docview">
   <div className="doc-top"><button className="btn ghost-btn" onClick={()=>history.length>1?history.back():go('bandeja')}><ArrowLeft size={16}/>Volver</button>
    <div className="doc-title"><p className="eyebrow">{kindLabel[doc.kind].toUpperCase()}{doc.origin==='correo'?' · CORREO':doc.origin==='escaneo'?' · ESCANEO':''}</p><h1>{doc.number||'Sin número'}</h1><p className="muted">{doc.supplier||'Proveedor sin identificar'} · {date(doc.date)}</p></div>
-   <div className="doc-status"><ClassBadge item={doc}/>{!discarded&&<StatusBadge item={doc}/>}{doc.driveFileId?<a className="badge neutral" href={`https://drive.google.com/file/d/${doc.driveFileId}/view`} target="_blank" rel="noreferrer">En Drive<ExternalLink size={12}/></a>:doc.status==='confirmed'&&doc.driveError?<span className="badge warning" title={doc.driveError}>Drive pendiente</span>:null}</div></div>
+   <div className="doc-status">{nav&&<button className="btn small doc-next" onClick={next} disabled={!nav.next} title={nav.next?`Documento ${nav.pos+1} de ${nav.total}`:'Es el último de la lista'}>Siguiente<ArrowRight size={15}/><span className="muted">{nav.pos}/{nav.total}</span></button>}<ClassBadge item={doc}/>{!discarded&&<StatusBadge item={doc}/>}{doc.driveFileId?<a className="badge neutral" href={`https://drive.google.com/file/d/${doc.driveFileId}/view`} target="_blank" rel="noreferrer">En Drive<ExternalLink size={12}/></a>:doc.status==='confirmed'&&doc.driveError?<span className="badge warning" title={doc.driveError}>Drive pendiente</span>:null}</div></div>
   {doc.file?.subject&&<p className="muted small">Correo: «{doc.file.subject}» · {doc.file.sender}</p>}
   {error&&<div className="alert danger" role="alert">{error}</div>}{notice&&<div className="alert success" role="status">{notice}</div>}
   {discarded?<div className="alert neutral"><strong>Descartado{doc.detectedType?': '+doc.detectedType:''}.</strong> {doc.classReason} No cuenta para conciliar y no se ha borrado.<div className="row-actions"><button className="btn small" disabled={!!busy} onClick={()=>recover('invoice')}>Es una factura</button><button className="btn small" disabled={!!busy} onClick={()=>recover('delivery_note')}>Es un albarán</button></div></div>

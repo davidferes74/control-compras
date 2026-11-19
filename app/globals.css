@@ -437,3 +437,7 @@ button,[role="button"],[role="radio"],.chip,.nav-item,.tabbar a,.ghost,.sheet-gr
 .discarded-main p{margin:0;font-size:.9rem}
 .discarded-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
 @media (max-width:700px){.discarded li{flex-direction:column}.discarded-actions{justify-content:flex-start}}
+
+/* Botón «Siguiente» del documento: pasa al siguiente de la lista sin volver a ella. */
+.doc-status .doc-next{margin-right:var(--space-2)}
+.doc-status .doc-next .muted{font-size:12px;font-variant-numeric:tabular-nums;margin-left:2px}

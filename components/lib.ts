@@ -31,3 +31,11 @@ export type InvoiceMatch={status:InvoiceStatus;deliveryNoteIds:string[];proposed
 export type DeliveryState={status:DeliveryStatus;invoiceIds:string[];pending:{lineId:string;description:string;quantity:string}[]};
 export type Related={id:string;kind:Kind;number:string;date:string|null;matchStatus:string|null;lines:{id:string;code:string;description:string;quantity:string|null;unit:string;unitPrice:string|null;discountPct:string|null}[]};
 export type FullDocument=ClassInfo&{id:string;kind:Kind;status:'draft'|'confirmed';supplier:string;supplierTaxId:string;number:string;date:string|null;deliveryRefs:string[];subtotal:string|null;tax:string|null;total:string|null;lines:(Line&{id:string;position:number})[];warnings:string[];matchStatus:string|null;match:InvoiceMatch|DeliveryState|null;related:Related[];driveFileId:string|null;driveError:string|null;file:{id:string;filename:string;mime:string;source:string;sender:string|null;subject:string|null;receivedAt:string|null;readState:string}|null;confirmedAt:string|null;createdAt:string};
+
+// ---------- Navegación «Siguiente» ----------
+// Orden de la última lista que se vio (Bandeja, Facturas con su filtro, Descartados…). Mientras hay un documento abierto
+// no se actualiza: así, al validar o descartar uno y pasar al siguiente, el orden de la lista no cambia por debajo.
+let navIds:string[]=[];
+export function setNavList(ids:string[]){if(typeof window!=='undefined'&&!window.location.hash.startsWith('#doc/'))navIds=ids;}
+/** Siguiente documento de la lista de la que se vino y posición del actual; null si no se vino de una lista o es el último. */
+export function navInfo(id:string):{next:string|null;pos:number;total:number}|null{const i=navIds.indexOf(id);return i<0?null:{next:navIds[i+1]??null,pos:i+1,total:navIds.length};}
