@@ -128,17 +128,35 @@ function DiscardedView({items,reload}:{items:ListItem[];reload:()=>Promise<void>
 function IssuesView({items,all,reload}:{items:ListItem[];all:ListItem[];reload:()=>Promise<void>}){
  const ready=items.filter(d=>d.ready),rest=items.filter(d=>!d.ready);useNavList([...ready,...rest]);
  const byId=new Map(all.map(d=>[d.id,d])),[busy,setBusy]=useState(''),[error,setError]=useState('');
+ type Suggestion={noteIds:string[];pct:number;exact:boolean;reasons:string[];unconfirmed:string[]};
+ const [found,setFound]=useState<Record<string,Suggestion[]>|null>(null),[linked,setLinked]=useState<Set<string>>(new Set()),[searching,setSearching]=useState(false),[summary,setSummary]=useState('');
+ async function search(){setSearching(true);setError('');setSummary('');setLinked(new Set());try{const r=await api<{suggestions:Record<string,Suggestion[]>;invoices:number}>('/api/matching',{method:'POST'});await reload();setFound(r.suggestions);
+  const n=Object.keys(r.suggestions).length;setSummary(r.invoices?`Revisadas ${r.invoices} factura${r.invoices===1?'':'s'}: ${n?`${n} con posibles albaranes`:'ninguna con albaranes candidatos'}.`:'No hay facturas pendientes de conciliar.');}
+  catch(e){setError((e as Error).message);}finally{setSearching(false);}}
+ async function link(d:ListItem,s:Suggestion){setBusy(d.id);setError('');try{await api('/api/links',{method:'POST',body:JSON.stringify({invoiceId:d.id,noteIds:s.noteIds,pct:s.pct})});await reload();
+  setLinked(l=>new Set(l).add(d.id));setSummary('');}catch(e){setError((e as Error).message);}finally{setBusy('');}}
+ const noteLabel=(id:string)=>byId.get(id)?.number||'albarán';
  const notesOf=(d:ListItem)=>d.deliveryNoteIds.map(id=>({id,number:byId.get(id)?.number||'albarán'}));
  async function validate(d:ListItem){const key=d.issues.find(x=>x.kind==='proposed')?.key;if(!key)return;setBusy(d.id);setError('');
   try{await api('/api/documents/'+d.id+'/decisions',{method:'POST',body:JSON.stringify({key,reason:motivoValidacion(notesOf(d).map(n=>n.number))})});await reload();}catch(e){setError((e as Error).message);}finally{setBusy('');}}
- return <><PageHead eyebrow="REVISIÓN" title="Diferencias"/>{error&&<div className="alert danger" role="alert">{error}</div>}
+ return <><PageHead eyebrow="REVISIÓN" title="Diferencias"><button className="btn" onClick={search} disabled={searching}>{searching?<Loader2 size={16} className="spin"/>:<Search size={16}/>}{searching?'Buscando…':'Buscar coincidencias'}</button></PageHead>
+ {error&&<div className="alert danger" role="alert">{error}</div>}{summary&&<div className="alert info" role="status">{summary} Solo con los datos guardados: no se ha usado la IA ni se ha vinculado nada.</div>}
  {ready.length>0&&<section className="ready-block"><div className="panel-head"><h2><CheckCircle2 size={18}/>Listas para validar</h2><span className="muted">{ready.length} factura{ready.length===1?'':'s'} cuadra{ready.length===1?'':'n'} al 100 % con sus albaranes</span></div>
   <div className="issue-cards">{ready.map(d=><div key={d.id} className="issue-card tone-ready"><div className="issue-card-head"><div><a href={'#doc/'+d.id}><strong>Factura {d.number}</strong></a><small>{d.supplier} · {date(d.date)} · {money(d.total)}</small></div>
    <button className="btn small primary" disabled={busy===d.id} onClick={()=>validate(d)}>{busy===d.id?<Loader2 size={15} className="spin"/>:<CheckCircle2 size={15}/>}Validar conciliación</button></div>
    <p className="ready-notes">Cuadra al 100 % con {d.deliveryNoteIds.length>1?'los albaranes':'el albarán'} {notesOf(d).map((n,i)=><span key={n.id}>{i>0&&', '}<a href={'#doc/'+n.id}>{n.number}</a></span>)}. La factura no los citaba: compruébalos y valida.</p></div>)}</div></section>}
  {!rest.length&&ready.length?null:!rest.length?<section className="panel"><Empty title="Sin diferencias abiertas" text="Todas las facturas confirmadas cuadran con sus albaranes o tienen las diferencias aceptadas."/></section>:
- <div className="issue-cards">{rest.map(d=><a key={d.id} href={'#doc/'+d.id} className={'issue-card tone-'+d.matchStatus}><div className="issue-card-head"><div><strong>Factura {d.number}</strong><small>{d.supplier} · {date(d.date)} · {money(d.total)}</small></div><StatusBadge item={d}/></div>
-  <ul>{d.issues.slice(0,4).map((x,i)=><li key={i}>{x.message}</li>)}</ul>{d.issues.length>4&&<p className="muted">y {d.issues.length-4} más…</p>}</a>)}</div>}</>;}
+ <div className="issue-cards">{rest.map(d=><div key={d.id} className="issue-wrap"><a href={'#doc/'+d.id} className={'issue-card tone-'+d.matchStatus}><div className="issue-card-head"><div><strong>Factura {d.number}</strong><small>{d.supplier} · {date(d.date)} · {money(d.total)}</small></div><StatusBadge item={d}/></div>
+  <ul>{d.issues.slice(0,4).map((x,i)=><li key={i}>{x.message}</li>)}</ul>{d.issues.length>4&&<p className="muted">y {d.issues.length-4} más…</p>}</a>{found&&!linked.has(d.id)&&<Suggestions items={found[d.id]} label={noteLabel} busy={busy===d.id} onLink={s=>link(d,s)}/>}</div>)}</div>}</>;}
+
+/** Albaranes candidatos de una factura tras «Buscar coincidencias». Vincular es siempre una decisión de una persona. */
+function Suggestions({items,label,busy,onLink}:{items?:{noteIds:string[];pct:number;exact:boolean;reasons:string[];unconfirmed:string[]}[];label:(id:string)=>string;busy:boolean;onLink:(s:{noteIds:string[];pct:number;exact:boolean;reasons:string[];unconfirmed:string[]})=>void}){
+ if(!items?.length)return <p className="suggestions-none muted small">Sin albaranes candidatos.</p>;
+ return <ul className="suggestions">{items.map(s=><li key={s.noteIds.join()}><div className="suggestion-head">
+  <span className={'badge '+(s.exact?'success':'info')}>{s.exact?'Coincidencia 100 %':`Parcial ${s.pct} %`}</span>
+  <span className="suggestion-notes">{s.noteIds.length>1?'Albaranes':'Albarán'} {s.noteIds.map((id,j)=><span key={id}>{j>0&&', '}<a href={'#doc/'+id}>{label(id)}</a>{s.unconfirmed.includes(id)&&<em className="muted"> (sin confirmar)</em>}</span>)}</span>
+  <button className={'btn small'+(s.exact?' primary':'')} disabled={busy||s.unconfirmed.length>0} title={s.unconfirmed.length?'Confirma antes el albarán':s.exact?'Vincular: la factura quedará conforme':'Vincular: la factura quedará con sus diferencias visibles'} onClick={()=>onLink(s)}>Vincular</button></div>
+  <ul className="reasons">{s.reasons.map(r=><li key={r}>{r}</li>)}</ul></li>)}</ul>;}
 
 function HistoryView(){const [events,setEvents]=useState<{at:string;action:string;message:string;document_id:string|null}[]|null>(null),[error,setError]=useState('');
  const load=useCallback(()=>{api<{events:typeof events}>('/api/history').then(r=>setEvents(r.events)).catch(e=>setError(e.message));},[]);useEffect(load,[load]);

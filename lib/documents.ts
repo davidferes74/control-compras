@@ -4,6 +4,8 @@ import type {PoolClient} from 'pg';
 import {getPool,org,tx,audit,getSetting} from './server-store';
 import {readFile,ReadError,readerModel} from './ai-reader';
 import {learnTemplate} from './templates';
+import Decimal from 'decimal.js';
+import {searchMatches,type Suggestion,type NoteCandidate} from './search';
 import {reconcile,supplierGroups,type Doc,type Decisions,type InvoiceMatch,type DeliveryState} from './matching';
 import {refMatches} from './normalize';
 import {decidirEstado,estadoDe,estadosVisibles,umbralesSchema,umbralesIniciales,type Estado,type Decision,type Umbrales} from './classify-rules';
@@ -101,7 +103,10 @@ export async function getDocument(id:string){const pool=getPool();const r=await 
 
 // ---------- Escritura ----------
 async function loadConfirmed(c:PoolClient){const docs=(await c.query("SELECT * FROM cc_documents WHERE organization_id=$1 AND status='confirmed' AND class_state IN ('FACTURA','ALBARAN')",[org()])).rows;const lines=(await c.query("SELECT l.* FROM cc_lines l JOIN cc_documents d ON d.id=l.document_id WHERE d.organization_id=$1 AND d.status='confirmed' AND d.class_state IN ('FACTURA','ALBARAN') ORDER BY l.position",[org()])).rows;
- const by=new Map<string,Record<string,unknown>[]>();for(const l of lines)(by.get(l.document_id)||by.set(l.document_id,[]).get(l.document_id)!).push(l);return docs.map(d=>rowToDoc(d,by.get(d.id)||[]));}
+ const by=new Map<string,Record<string,unknown>[]>();for(const l of lines)(by.get(l.document_id)||by.set(l.document_id,[]).get(l.document_id)!).push(l);
+ // Vínculos manuales factura ↔ albarán (fase 2): cuentan como albaranes citados.
+ const links=new Map<string,string[]>();for(const k of (await c.query('SELECT invoice_id,delivery_note_id FROM cc_links WHERE organization_id=$1 ORDER BY created_at',[org()])).rows)(links.get(k.invoice_id)||links.set(k.invoice_id,[]).get(k.invoice_id)!).push(k.delivery_note_id);
+ return docs.map(d=>({...rowToDoc(d,by.get(d.id)||[]),links:links.get(d.id)||[]}));}
 
 /** Recalcula la conciliación de todos los documentos confirmados. Idempotente; se llama tras cada cambio. */
 export async function recompute(c:PoolClient){await c.query('SELECT pg_advisory_xact_lock(hashtext($1))',[org()+':reconcile']);
@@ -162,3 +167,44 @@ export async function readOriginal(fileId:string){const r=await getPool().query(
 export async function history(limit=150){return (await getPool().query('SELECT at,action,message,document_id FROM cc_audit WHERE organization_id=$1 ORDER BY at DESC LIMIT $2',[org(),limit])).rows;}
 
 export async function pendingCount(){return (await getPool().query("SELECT count(*)::int AS n FROM cc_documents WHERE organization_id=$1 AND class_state='PENDIENTE_CLASIFICACION'",[org()])).rows[0].n as number;}
+
+// ---------- Búsqueda ampliada y vínculos manuales (fase 2) ----------
+async function loadDecisions(c:PoolClient){const decisions:Decisions=new Map();for(const d of (await c.query('SELECT invoice_id,key,reason,created_at FROM cc_decisions WHERE organization_id=$1',[org()])).rows)(decisions.get(d.invoice_id)||decisions.set(d.invoice_id,new Map()).get(d.invoice_id)!).set(d.key,{reason:d.reason,at:new Date(d.created_at).toISOString()});return decisions;}
+
+/**
+ * «Buscar coincidencias»: recalcula la conciliación y, para cada factura con algo pendiente (salvo las listas para
+ * validar), propone albaranes con todas las variables. Solo datos guardados, sin IA. No vincula nada.
+ */
+export async function searchSuggestions():Promise<{suggestions:Record<string,Suggestion[]>;invoices:number}>{
+ return tx(async c=>{await recompute(c);
+  const docs=await loadConfirmed(c),r=reconcile(docs,await loadDecisions(c));
+  // Albaranes en borrador o dudosos (no descartados ni duplicados): candidatos marcados «sin confirmar».
+  const draftRows=(await c.query("SELECT * FROM cc_documents WHERE organization_id=$1 AND kind='delivery_note' AND status='draft' AND class_state IN ('ALBARAN','DUDOSO') AND duplicate_of IS NULL",[org()])).rows;
+  const draftLines=draftRows.length?(await c.query('SELECT * FROM cc_lines WHERE document_id=ANY($1) ORDER BY position',[draftRows.map(d=>d.id)])).rows:[];
+  const byDoc=new Map<string,Record<string,unknown>[]>();for(const l of draftLines)(byDoc.get(l.document_id)||byDoc.set(l.document_id,[]).get(l.document_id)!).push(l);
+  const notes:NoteCandidate[]=[...docs.filter(d=>d.kind==='delivery_note').map(doc=>({doc,confirmed:true})),...draftRows.map(d=>({doc:rowToDoc(d,byDoc.get(d.id)||[]),confirmed:false}))];
+  // Cantidad pendiente de cada línea de albarán confirmado según la conciliación actual.
+  const pending=new Map<string,Decimal>();for(const n of notes){const st=r.deliveries.get(n.doc.id);for(const l of n.doc.lines){const p=st?st.pending.find(x=>x.lineId===l.id):null;pending.set(l.id,n.confirmed?(p?new Decimal(p.quantity):new Decimal(0)):new Decimal(l.quantity||0));}}
+  const suggestions:Record<string,Suggestion[]>={};let invoices=0;
+  for(const inv of docs.filter(d=>d.kind==='invoice')){const m=r.invoices.get(inv.id);if(!m||m.status==='ok'||m.ready)continue;invoices++;
+   // Lo que esta factura ya consume vuelve a estar disponible para ella; sus albaranes citados o vinculados no se proponen.
+   const avail=new Map(pending);for(const p of m.pairs)avail.set(p.deliveryLineId,(avail.get(p.deliveryLineId)||new Decimal(0)).plus(p.quantity));
+   const s=searchMatches(inv,notes,avail,new Set(m.proposed?[]:m.deliveryNoteIds));if(s.length)suggestions[inv.id]=s;}
+  return {suggestions,invoices};});}
+
+/** Vincula a mano albaranes confirmados a una factura confirmada. La factura queda con sus diferencias visibles. */
+export async function linkNotes(invoiceId:string,noteIds:string[],pct:number|null){await tx(async c=>{
+ const inv=await c.query("SELECT number FROM cc_documents WHERE id=$1 AND organization_id=$2 AND kind='invoice' AND status='confirmed'",[invoiceId,org()]);if(!inv.rowCount)throw new AppError('Factura no encontrada o sin confirmar.',404);
+ const notes=(await c.query("SELECT id,number,status,class_state FROM cc_documents WHERE id=ANY($1) AND organization_id=$2 AND kind='delivery_note'",[noteIds,org()])).rows;
+ if(notes.length!==noteIds.length)throw new AppError('Algún albarán ya no existe; vuelve a buscar.',409);
+ const sin=notes.filter(n=>n.status!=='confirmed'||n.class_state!=='ALBARAN');if(sin.length)throw new AppError(`Confirma antes ${sin.length>1?'los albaranes':'el albarán'} ${sin.map(n=>n.number||'sin número').join(', ')}.`,409);
+ for(const n of notes)await c.query('INSERT INTO cc_links(organization_id,invoice_id,delivery_note_id,match_pct) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING',[org(),invoiceId,n.id,pct]);
+ await audit('link',`Vinculad${notes.length>1?'os':'o'} a mano a la factura ${inv.rows[0].number}: ${notes.length>1?'albaranes':'albarán'} ${notes.map(n=>n.number||'sin número').join(', ')}${pct!==null?` (coincidencia ${pct} %)`:''}.`,invoiceId,c);
+ await recompute(c);});}
+
+/** Deshace un vínculo manual. */
+export async function unlinkNote(invoiceId:string,noteId:string){await tx(async c=>{
+ const r=await c.query('DELETE FROM cc_links l USING cc_documents i,cc_documents n WHERE l.organization_id=$1 AND l.invoice_id=$2 AND l.delivery_note_id=$3 AND i.id=l.invoice_id AND n.id=l.delivery_note_id RETURNING i.number AS invoice,n.number AS note',[org(),invoiceId,noteId]);
+ if(!r.rowCount)throw new AppError('Ese vínculo ya no existe.',409);
+ await audit('unlink',`Desvinculado de la factura ${r.rows[0].invoice}: albarán ${r.rows[0].note||'sin número'}.`,invoiceId,c);
+ await recompute(c);});}
