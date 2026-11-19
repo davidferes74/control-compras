@@ -102,8 +102,8 @@ function ListView({kind,items}:{kind:Kind;items:ListItem[]}){
  // Confirmados y dudosos de este tipo. Los dudosos no concilian hasta que una persona los valide.
  const mine=items.filter(d=>(d.status==='confirmed'||d.classState==='DUDOSO')&&(kind==='invoice'?d.kind!=='delivery_note':d.kind==='delivery_note'));
  const [origin,setOrigin]=useState('all');
- const filters=kind==='invoice'?[['all','Todas'],['dudoso','Dudosos'],['diff','Con diferencias'],['missing','Falta albarán'],['review','Revisar'],['ok','Conformes']]:[['all','Todos'],['dudoso','Dudosos'],['pending','Pendientes de facturar'],['partial','En parte'],['invoiced','Facturados']];
- const term=q.trim().toLowerCase();const is=(d:ListItem,s:string)=>s==='dudoso'?d.classState==='DUDOSO':d.matchStatus===s;
+ const filters=kind==='invoice'?[['all','Todas'],['ia','Validadas por la IA'],['dudoso','Dudosos'],['diff','Con diferencias'],['missing','Falta albarán'],['review','Revisar'],['ok','Conformes']]:[['all','Todos'],['dudoso','Dudosos'],['pending','Pendientes de facturar'],['partial','En parte'],['invoiced','Facturados']];
+ const term=q.trim().toLowerCase();const is=(d:ListItem,s:string)=>s==='dudoso'?d.classState==='DUDOSO':s==='ia'?d.status==='confirmed'&&d.classBy==='ia':d.matchStatus===s;
  const shown=mine.filter(d=>(filter==='all'||is(d,filter))&&(origin==='all'||d.origin===origin)&&(!term||(d.number+' '+d.supplier+' '+d.deliveryRefs.join(' ')).toLowerCase().includes(term)));
  const n=(s:string)=>mine.filter(d=>is(d,s)).length;
  return <><PageHead eyebrow="DOCUMENTOS" title={kind==='invoice'?'Facturas':'Albaranes'}/>

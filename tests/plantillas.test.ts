@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {matchTemplates,templateContext,corrections,type Template} from '../lib/templates';
 import {clasificacionSchema} from '../lib/prompts/clasificador-documentos';
-import {decidirEstado} from '../lib/classify-rules';
+import {decidirEstado,umbralesIniciales} from '../lib/classify-rules';
 // R5 (docs/requisitos-clasificacion.md): plantillas de proveedor. Ayudan a leer; nunca eximen de clasificar.
 
 const tpl=(o:Partial<Template>):Template=>({id:'t1',kind:'invoice',supplierTaxId:'B12345678',supplierName:'Frutas Pérez SL',senders:['facturas@frutasperez.es'],format:{numeracion:'F-0000'},example:{numero:'F-1'},corrections:[],...o});
@@ -43,7 +43,7 @@ test('(e) un proveedor con plantilla no se salta la clasificación',()=>{
  // La entrada lee siempre con el prompt único y decide siempre con las reglas, haya plantilla o no.
  const intake=readFileSync('lib/intake.ts','utf8'),body=intake.slice(intake.indexOf('export async function clasificarDocumento'),intake.indexOf('/** Clasifica los documentos pendientes'));
  assert.ok(body.indexOf('findTemplates(')<body.indexOf('readFile(row.file_id,{context'),'la plantilla solo acompaña a la lectura');
- assert.ok(body.includes('decidirEstado(x,await umbrales())'));
+ assert.ok(body.includes('decidirEstado(x,await umbrales(),templates)'));
  assert.ok(!/templates\.length[^;]*return\s*\{estado/.test(body),'tener plantilla no puede devolver un estado sin clasificar');
 });
 
@@ -55,4 +55,31 @@ test('R5: las correcciones de una persona sobre la lectura de la IA se registran
  // Aprender es cosa de una validación humana: solo saveDocument llama a learnTemplate.
  assert.ok(readFileSync('lib/documents.ts','utf8').includes("if(status==='confirmed')await learnTemplate(c,id);"));
  assert.ok(!readFileSync('lib/intake.ts','utf8').includes('learnTemplate'));
+});
+
+test('Proveedor conocido: umbral «plantilla» (decisión del propietario, 19-11-2026)',()=>{
+ const t=[tpl({})],u=umbralesIniciales;
+ const base={supplier:'Frutas Pérez SL',supplierTaxId:'B12345678',recipient:'',recipientTaxId:'',number:'F-2',date:'2026-11-12',orderNumber:'',currency:'EUR',deliveryRefs:[],subtotal:'12.00',tax:'1.20',total:'13.20',warnings:[],lines:[linea]};assert.equal(u.plantilla,0.70);
+ // Plantilla validada + coincide + mismo NIF: una factura al 80 % se valida sola.
+ const ok=decidirEstado(lectura({confianza:0.80}),u,t);assert.equal(ok.estado,'FACTURA');assert.match(ok.motivo,/Proveedor conocido/);
+ // NIF con prefijo ES o separadores: es el mismo.
+ assert.equal(decidirEstado(lectura({confianza:0.80,datos:{...base,supplierTaxId:'ES-B12345678'}}),u,t).estado,'FACTURA');
+ // Por debajo del umbral «plantilla»: DUDOSO.
+ assert.equal(decidirEstado(lectura({confianza:0.65}),u,t).estado,'DUDOSO');
+ // Sin plantilla, plantilla de otro tipo, o que no coincide: sigue haciendo falta el umbral normal.
+ assert.equal(decidirEstado(lectura({confianza:0.80}),u,[]).estado,'DUDOSO');
+ assert.equal(decidirEstado(lectura({confianza:0.80}),u,[tpl({kind:'delivery_note'})]).estado,'DUDOSO');
+ assert.equal(decidirEstado(lectura({confianza:0.80,coincide_con_plantilla:'sin_plantilla'}),u,t).estado,'DUDOSO');
+ assert.equal(decidirEstado(lectura({confianza:0.95,coincide_con_plantilla:'no'}),u,t).estado,'DUDOSO');
+ // NIF distinto del de la plantilla, o sin NIF: DUDOSO.
+ assert.equal(decidirEstado(lectura({confianza:0.80,datos:{...base,supplierTaxId:'B99999999'}}),u,t).estado,'DUDOSO');
+ assert.equal(decidirEstado(lectura({confianza:0.80,datos:{...base,supplierTaxId:''}}),u,t).estado,'DUDOSO');
+ // Las comprobaciones de siempre se mantienen: importes que no cuadran, datos que faltan, la IA dice DUDOSO o proforma.
+ assert.equal(decidirEstado(lectura({confianza:0.80,datos:{...base,total:'99.00'}}),u,t).estado,'DUDOSO');
+ assert.equal(decidirEstado(lectura({confianza:0.80,datos:{...base,number:''}}),u,t).estado,'DUDOSO');
+ assert.equal(decidirEstado(lectura({estado:'DUDOSO',confianza:0.80}),u,t).estado,'DUDOSO');
+ assert.equal(decidirEstado(lectura({confianza:0.80,tipo_documento:'factura proforma'}),u,t).estado,'DUDOSO');
+ // Solo afecta a facturas: un albarán sigue necesitando el umbral normal.
+ const alb=lectura({estado:'ALBARAN',clase:'albaran',tipo_documento:'albarán',confianza:0.80});
+ assert.equal(decidirEstado(alb,u,[tpl({kind:'delivery_note'})]).estado,'DUDOSO');
 });
