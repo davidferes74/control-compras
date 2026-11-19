@@ -116,7 +116,14 @@ clasifica como `FACTURA` y se indica en el tipo.
 NO son factura ni albarán (→ `DESCARTADO`): presupuestos, pedidos,
 confirmaciones de pedido, extractos bancarios, recibos de transferencia,
 nóminas, contratos, catálogos, publicidad, condiciones generales,
-certificados, firmas o logos adjuntos.
+certificados, firmas o logos adjuntos, e informes de cualquier tipo
+(técnicos, de servicio, de mantenimiento, de inspección, de actividad, de
+ventas…), extractos o estados de cuenta, avisos de envío y documentos
+similares. Un documento que claramente es de otro tipo se descarta aunque
+contenga importes, tablas o datos de un proveedor: lo que decide es qué es
+el documento, no los datos que menciona (decisión del propietario,
+19-11-2026; prompt `2026-11-19.1`). `DUDOSO` queda para lo que parece una
+factura o un albarán y le falta algo.
 
 Las facturas proforma se marcan `DUDOSO` con el tipo "proforma".
 Guardar siempre el tipo de documento detectado, también en los descartados.
