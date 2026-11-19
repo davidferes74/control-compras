@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fileName,safePart,extensionFor,monthFolders,documentName} from '../lib/drive-names';
+import {fileName,safePart,extensionFor,monthFolders,documentName,kindFolder} from '../lib/drive-names';
 import {forbiddenKind,folderNameSchema} from '../lib/drive';
 // Portadas de Recepciones-IA (tests/drive-names.test.ts) y adaptadas a los documentos de control-compras.
 
@@ -33,4 +33,8 @@ test('un 403 de Google se distingue: API de Drive sin activar frente a acceso de
 test('el nombre de la carpeta que escribe el usuario se limpia y no puede quedar vacío',()=>{
  assert.equal(folderNameSchema.parse('  Compras / 2026  '),'Compras 2026');
  assert.equal(folderNameSchema.safeParse('  /// ').success,false);
+});
+
+test('subcarpetas por tipo: facturas y abonos por un lado, albaranes por otro',()=>{
+ assert.equal(kindFolder('invoice'),'Facturas');assert.equal(kindFolder('credit_note'),'Facturas');assert.equal(kindFolder('delivery_note'),'Albaranes');
 });

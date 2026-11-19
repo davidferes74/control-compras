@@ -441,3 +441,11 @@ button,[role="button"],[role="radio"],.chip,.nav-item,.tabbar a,.ghost,.sheet-gr
 /* Botón «Siguiente» del documento: pasa al siguiente de la lista sin volver a ella. */
 .doc-status .doc-next{margin-right:var(--space-2)}
 .doc-status .doc-next .muted{font-size:12px;font-variant-numeric:tabular-nums;margin-left:2px}
+
+/* Conciliación «Lista para validar»: la factura cuadra al 100 % con albaranes que no citaba. */
+.ready-block{margin-bottom:var(--space-5)}
+.ready-block .panel-head h2{display:flex;align-items:center;gap:8px;color:var(--success)}
+.issue-card.tone-ready{box-shadow:inset 3px 0 0 var(--success),var(--shadow-panel)}
+.issue-card .ready-notes{margin:var(--space-3) 0 0;color:var(--text-secondary)}
+.ready-cta{display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap}
+.ready-cta span{flex:1;min-width:200px}
