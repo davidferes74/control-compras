@@ -1,11 +1,12 @@
 import Decimal from 'decimal.js';
-import {normCode,normText,refMatches,similarity,supplierKey,normTaxId} from './normalize';
+import {normCode,normText,refMatches,fuzzyRefMatches,similarity,supplierKey,normTaxId} from './normalize';
 // Motor de conciliación factura ↔ albaranes. Función pura y determinista: mismos documentos, mismo resultado.
 // Aritmética decimal exacta. La IA solo transcribe documentos; aquí se decide qué cuadra y qué no.
 
 export type Kind='invoice'|'delivery_note'|'credit_note';
 export type DocLine={id:string;position:number;code:string;description:string;quantity:string|null;unit:string;unitPrice:string|null;discountPct:string|null;amount:string|null;deliveryRef:string};
-export type Doc={id:string;kind:Kind;supplier:string;supplierTaxId:string;number:string;date:string|null;deliveryRefs:string[];subtotal:string|null;tax:string|null;total:string|null;lines:DocLine[]};
+// links: albaranes vinculados a mano a esta factura (cc_links); cuentan como citados.
+export type Doc={id:string;kind:Kind;supplier:string;supplierTaxId:string;number:string;date:string|null;deliveryRefs:string[];subtotal:string|null;tax:string|null;total:string|null;lines:DocLine[];links?:string[]};
 export type Severity='error'|'review'|'info';
 export type DiscrepancyKind='missing_delivery'|'no_delivery'|'over_invoiced'|'already_invoiced'|'price'|'discount'|'amount'|'totals'|'proposed'|'similar'|'not_invoiced'|'charge'|'no_lines';
 export type Discrepancy={key:string;kind:DiscrepancyKind;severity:Severity;message:string;invoiceLineId?:string;deliveryNoteId?:string;accepted?:{reason:string;at:string}};
@@ -14,7 +15,7 @@ export type Pair={invoiceLineId:string;deliveryNoteId:string;deliveryLineId:stri
 export type InvoiceStatus='ok'|'diff'|'missing'|'review';
 // exact: los albaranes propuestos (la factura no cita ninguno) cuadran al 100 % con ella.
 // ready: «Lista para validar»: propuesta exacta y nada más pendiente salvo validar la propuesta.
-export type InvoiceMatch={invoiceId:string;status:InvoiceStatus;deliveryNoteIds:string[];proposed:boolean;exact?:boolean;ready?:boolean;pairs:Pair[];discrepancies:Discrepancy[];prices:'ok'|'diff'|'unverifiable'};
+export type InvoiceMatch={invoiceId:string;status:InvoiceStatus;deliveryNoteIds:string[];proposed:boolean;exact?:boolean;ready?:boolean;linkedIds?:string[];pairs:Pair[];discrepancies:Discrepancy[];prices:'ok'|'diff'|'unverifiable'};
 export type DeliveryStatus='invoiced'|'partial'|'pending';
 export type DeliveryState={deliveryNoteId:string;status:DeliveryStatus;invoiceIds:string[];pending:{lineId:string;description:string;quantity:string}[]};
 export type Decisions=Map<string,Map<string,{reason:string;at:string}>>; // invoiceId → key → aceptación
@@ -36,8 +37,11 @@ const lineKey=(l:DocLine)=>normCode(l.code)||normText(l.description)||String(l.p
 export function netPrice(l:DocLine){const p=D(l.unitPrice);if(!p)return null;const d=D(l.discountPct);return d?p.times(new Decimal(100).minus(d)).div(100):p;}
 
 /** Agrupa por proveedor: NIF si lo hay; si no, nombre normalizado (enlazado al NIF cuando algún documento tiene ambos). */
+// Un albarán vinculado a mano a una factura va al grupo de esa factura aunque su proveedor se haya leído distinto.
 export function supplierGroups(docs:Doc[]){const byName=new Map<string,string>();for(const d of docs){const t=normTaxId(d.supplierTaxId);if(t)byName.set(supplierKey(d.supplier),t);}
- const groups=new Map<string,Doc[]>();for(const d of docs){const k=normTaxId(d.supplierTaxId)||byName.get(supplierKey(d.supplier))||'n:'+supplierKey(d.supplier);(groups.get(k)||groups.set(k,[]).get(k)!).push(d);}return groups;}
+ const keyOf=(d:Doc)=>normTaxId(d.supplierTaxId)||byName.get(supplierKey(d.supplier))||'n:'+supplierKey(d.supplier);
+ const override=new Map<string,string>();for(const d of docs)if(d.kind==='invoice')for(const id of d.links||[])if(!override.has(id))override.set(id,keyOf(d));
+ const groups=new Map<string,Doc[]>();for(const d of docs){const k=override.get(d.id)||keyOf(d);(groups.get(k)||groups.set(k,[]).get(k)!).push(d);}return groups;}
 
 const byDate=(a:Doc,b:Doc)=>(a.date||'9999').localeCompare(b.date||'9999')||a.number.localeCompare(b.number)||a.id.localeCompare(b.id);
 const daysBetween=(a:string,b:string)=>(Date.parse(b)-Date.parse(a))/86400000;
@@ -83,13 +87,17 @@ export function reconcile(docs:Doc[],decisions:Decisions=new Map()):{invoices:Ma
    // 1) Albaranes de la factura: los que cita, o propuestos por proveedor y fecha si no cita ninguno.
    const refs=[...new Set([...inv.deliveryRefs,...inv.lines.map(l=>l.deliveryRef)].map(r=>r.trim()).filter(Boolean))];
    let linked:Doc[]=[],proposed=false,exact=false;
-   if(refs.length){for(const r of refs){const found=notes.filter(n=>refMatches(n.number,r));if(!found.length)add({key:'missing_delivery:'+r,kind:'missing_delivery',severity:'error',message:`La factura cita el albarán ${r}, que no está registrado.`});for(const n of found)if(!linked.includes(n))linked.push(n);}}
+   const manual=(inv.links||[]).map(id=>notes.find(n=>n.id===id)).filter((n):n is Doc=>Boolean(n)),cited=refs.length>0||manual.length>0;
+   if(cited){for(const n of manual)if(!linked.includes(n))linked.push(n);
+    for(const r of refs){const found=notes.filter(n=>refMatches(n.number,r));
+     // Citado con el número mal leído pero vinculado a mano a su albarán: no falta.
+     if(!found.length&&!manual.some(n=>fuzzyRefMatches(n.number,r)))add({key:'missing_delivery:'+r,kind:'missing_delivery',severity:'error',message:`La factura cita el albarán ${r}, que no está registrado.`});for(const n of found)if(!linked.includes(n))linked.push(n);}}
    else{// Sin albaranes citados: primero la combinación que cuadra al 100 %; si no la hay, todos los candidatos por proveedor y fecha.
     const candidates=notes.filter(n=>n.lines.some(l=>remaining.get(l.id)!.gt(0))&&inWindow(n,inv)),best=exactProposal(inv,candidates,remaining);
     linked=best||candidates;exact=Boolean(best);proposed=linked.length>0;
     const names=linked.map(n=>n.number||'sin número').join(', ');
     if(proposed)add({key:'proposed:'+linked.map(n=>n.number).join('|'),kind:'proposed',severity:'review',message:exact?`La factura no cita albaranes, pero cuadra al 100 % con ${linked.length>1?'los albaranes':'el albarán'} ${names}. Valida la propuesta para dejarla conforme.`:`La factura no cita albaranes. Se proponen por proveedor y fecha: ${names}.`});}
-   for(const n of linked){if(!refs.length)continue;const fully=n.lines.length>0&&n.lines.every(l=>remaining.get(l.id)!.lte(0))&&(consumedBy.get(n.id)||[]).length>0;
+   for(const n of linked){if(!cited)continue;const fully=n.lines.length>0&&n.lines.every(l=>remaining.get(l.id)!.lte(0))&&(consumedBy.get(n.id)||[]).length>0;
     if(fully){const other=bills.filter(b=>(consumedBy.get(n.id)||[]).includes(b.id)).map(b=>b.number||'sin número');add({key:'already_invoiced:'+n.number+':'+other.join('|'),kind:'already_invoiced',severity:'error',deliveryNoteId:n.id,message:`El albarán ${n.number} ya está facturado entero en ${other.length>1?'las facturas':'la factura'} ${other.join(', ')}.`});}}
    for(const n of linked)linkedBy.set(n.id,[...(linkedBy.get(n.id)||[]),inv.id]);
    if(!inv.lines.length)add({key:'no_lines',kind:'no_lines',severity:'review',message:'La factura no tiene líneas: no se puede comparar con los albaranes.'});
@@ -111,7 +119,7 @@ export function reconcile(docs:Doc[],decisions:Decisions=new Map()):{invoices:Ma
      if(need.lte(0))break;}
     if(basisUsed==='similar')add({key:'similar:'+lineKey(il),kind:'similar',severity:'review',invoiceLineId:il.id,message:`«${lineName(il)}» se ha emparejado por descripción parecida, no idéntica. Comprueba que es el mismo artículo.`});
     const got=q.minus(need);
-    if(got.isZero())add(anyCandidate&&refs.length?{key:`already_invoiced:${lineKey(il)}:${q}`,kind:'already_invoiced',severity:'error',invoiceLineId:il.id,message:`«${lineName(il)}» (${fmt(q)}${u(il.unit)}) ya estaba facturado entero en otra factura.`}:{key:`no_delivery:${lineKey(il)}:${q}`,kind:'no_delivery',severity:'error',invoiceLineId:il.id,message:`«${lineName(il)}»: se facturan ${fmt(q)}${u(il.unit)} que no aparecen en ${linked.length?'los albaranes asociados':'ningún albarán'}.`});
+    if(got.isZero())add(anyCandidate&&cited?{key:`already_invoiced:${lineKey(il)}:${q}`,kind:'already_invoiced',severity:'error',invoiceLineId:il.id,message:`«${lineName(il)}» (${fmt(q)}${u(il.unit)}) ya estaba facturado entero en otra factura.`}:{key:`no_delivery:${lineKey(il)}:${q}`,kind:'no_delivery',severity:'error',invoiceLineId:il.id,message:`«${lineName(il)}»: se facturan ${fmt(q)}${u(il.unit)} que no aparecen en ${linked.length?'los albaranes asociados':'ningún albarán'}.`});
     else if(need.gt(0))add({key:`over_invoiced:${lineKey(il)}:${q}:${got}`,kind:'over_invoiced',severity:'error',invoiceLineId:il.id,message:`«${lineName(il)}»: se facturan ${fmt(q)}${u(il.unit)} y los albaranes solo recogen ${fmt(got)}.`});
     // Importe de línea = cantidad × precio × (1 − descuento).
     const p=D(il.unitPrice),amount=D(il.amount);if(p&&amount){const expected=netPrice(il)!.times(q).toDecimalPlaces(2);if(expected.minus(amount).abs().gt(AMOUNT_TOLERANCE))add({key:`amount:${lineKey(il)}:${amount}:${expected}`,kind:'amount',severity:'error',invoiceLineId:il.id,message:`«${lineName(il)}»: el importe de la línea es ${money(amount)} € y debería ser ${money(expected)} € (${fmt(q)} × ${money(netPrice(il)!)}).`});}
@@ -120,7 +128,7 @@ export function reconcile(docs:Doc[],decisions:Decisions=new Map()):{invoices:Ma
    const amounts=inv.lines.map(l=>D(l.amount)).filter((x):x is Decimal=>x!==null),sub=D(inv.subtotal),tax=D(inv.tax),total=D(inv.total);
    if(sub&&amounts.length===inv.lines.length&&amounts.length){const s=amounts.reduce((a,b)=>a.plus(b),new Decimal(0));if(s.minus(sub).abs().gt(SUBTOTAL_TOLERANCE))add({key:`totals:lines:${s}:${sub}`,kind:'totals',severity:'error',message:`La suma de las líneas es ${money(s)} € y la base imponible ${money(sub)} €.`});}
    if(sub&&tax&&total&&sub.plus(tax).minus(total).abs().gt(AMOUNT_TOLERANCE))add({key:`totals:sum:${sub}:${tax}:${total}`,kind:'totals',severity:'error',message:`Base ${money(sub)} € + IVA ${money(tax)} € no da el total ${money(total)} €.`});
-   invoices.set(inv.id,{invoiceId:inv.id,status:'ok',deliveryNoteIds:linked.map(n=>n.id),proposed,exact,pairs,discrepancies:out,prices:priceDiff?'diff':priceSeen?'ok':'unverifiable'});
+   invoices.set(inv.id,{invoiceId:inv.id,status:'ok',deliveryNoteIds:linked.map(n=>n.id),proposed,exact,linkedIds:manual.map(n=>n.id),pairs,discrepancies:out,prices:priceDiff?'diff':priceSeen?'ok':'unverifiable'});
   }
   // 4) Estado de cada albarán y lo entregado sin facturar (se avisa en la última factura que lo enlaza).
   for(const n of notes){const pending=n.lines.filter(l=>remaining.get(l.id)!.gt(0)).map(l=>({lineId:l.id,description:lineName(l),quantity:remaining.get(l.id)!.toString()}));const by=consumedBy.get(n.id)||[];

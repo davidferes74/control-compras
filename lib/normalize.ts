@@ -7,6 +7,10 @@ export const normRef=(s:string)=>normCode((s||'').replace(/\d+/g,d=>d.replace(/^
 const digits=(s:string)=>normRef(s).replace(/\D/g,'');
 /** Dos referencias son la misma si coinciden normalizadas, o si solo difieren en un prefijo de letras («A-123» y «123»). */
 export function refMatches(a:string,b:string){const x=normRef(a),y=normRef(b);if(!x||!y)return false;if(x===y)return true;const dx=digits(a),dy=digits(b);return dx.length>=3&&dx===dy&&(x===dx||y===dy);}
+/** Referencia tolerante a errores típicos de lectura (O/0, I/L/1, Z/2, S/5, B/8, solo en tramos con cifras) y a ceros a la izquierda. */
+export const ocrRef=(s:string)=>accents(s||'').toUpperCase().split(/[^A-Z0-9]+/).map(seg=>/\d/.test(seg)?seg.replace(/O/g,'0').replace(/[IL]/g,'1').replace(/Z/g,'2').replace(/S/g,'5').replace(/B/g,'8'):seg).map(seg=>seg.replace(/\d+/g,d=>d.replace(/^0+(?=\d)/,''))).join('');
+/** Mismo número de documento aunque la lectura tenga errores: igual con ocrRef, o mismos dígitos (4 o más) tras ocrRef. */
+export function fuzzyRefMatches(a:string,b:string){if(refMatches(a,b))return true;const x=ocrRef(a),y=ocrRef(b);if(!x||!y)return false;if(x===y)return true;const dx=x.replace(/\D/g,''),dy=y.replace(/\D/g,'');return dx.length>=4&&dx===dy;}
 export const normTaxId=(s:string)=>{const c=normCode(s);return c.length>9&&c.startsWith('ES')?c.slice(2):c;};
 const legal=/\b(s ?l ?u?|s ?a ?u?|s ?l ?l|s ?c ?o ?o ?p|c ?b|sociedad (limitada|anonima)( unipersonal)?|ltd|gmbh|sas|srl)\b/g;
 export const supplierKey=(name:string)=>normText(name).replace(legal,' ').replace(/\s+/g,'');
