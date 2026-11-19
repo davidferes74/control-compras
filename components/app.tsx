@@ -118,7 +118,7 @@ function useNavList(items:ListItem[]){const key=items.map(d=>d.id).join(',');use
 function DiscardedView({items,reload}:{items:ListItem[];reload:()=>Promise<void>}){useNavList(items);const [busy,setBusy]=useState(''),[error,setError]=useState('');
  async function recover(id:string,kind:'invoice'|'delivery_note'){setBusy(id);setError('');try{await api('/api/documents/'+id,{method:'POST',body:JSON.stringify({action:'recover',kind})});await reload();go('doc/'+id);}catch(e){setError((e as Error).message);}finally{setBusy('');}}
  return <><PageHead eyebrow="ARCHIVO" title="Descartados"/>
-  <p className="muted">Documentos que no son factura ni albarán, o que ya estaban registrados. Nada se borra: puedes recuperarlos.</p>{error&&<div className="alert danger" role="alert">{error}</div>}
+  <p className="muted">Documentos que no son factura ni albarán, que van dirigidos a otra empresa o que ya estaban registrados. Nada se borra: puedes recuperarlos.</p>{error&&<div className="alert danger" role="alert">{error}</div>}
   <section className="panel">{!items.length?<Empty title="Nada descartado" text="Aquí aparecerá lo que el clasificador o tú descartéis."/>:
    <ul className="discarded">{items.map(d=><li key={d.id}><div className="discarded-main"><strong>{d.detectedType||kindLabel[d.kind]}{d.number?' · '+d.number:''}</strong> <ClassBadge item={d}/>
      <small>{[d.sender||d.supplier||(d.origin==='correo'?'Remitente desconocido':'Subido a mano'),d.receivedAt?dateTime(d.receivedAt):date(d.date||d.createdAt),d.filename].filter(Boolean).join(' · ')}</small>
