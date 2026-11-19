@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
-import {Mail,Sparkles,Loader2,Link2Off,AlertTriangle,Palette,KeyRound,RefreshCw,Pause,Play,SlidersHorizontal,ShieldCheck} from 'lucide-react';
-import {api,dateTime,type AppState} from './lib';
+import {Building2,Mail,Sparkles,Loader2,Link2Off,AlertTriangle,Palette,KeyRound,RefreshCw,Pause,Play,SlidersHorizontal,ShieldCheck} from 'lucide-react';
+import {api,dateTime,type AppState,type Company} from './lib';
 import {PageHead,Badge,ThemePicker,Modal} from './ui';
 import DriveConnection from './drive-connection';
 import DriveHelp,{type DriveIssue} from './drive-help';
@@ -13,6 +13,7 @@ type GmailForm={name:string;labels:string[];since:string;sender:string;subject:s
 
 export default function SettingsView({state,reload}:{state:AppState;reload:()=>Promise<void>}){
  const g=state.google,[busy,setBusy]=useState<string|null>(null),[error,setError]=useState(''),[notice,setNotice]=useState<[string,string]|null>(null),[issue,setIssue]=useState<{kind:DriveIssue;service:'drive'|'gmail'}|null>(null),[help,setHelp]=useState(false);
+ const [company,setCompany]=useState<Company>(state.company||{name:'',taxIds:'',aliases:''});
  const [labels,setLabels]=useState<{id:string;name:string}[]>([]),[form,setForm]=useState<GmailForm|null>(null),[formError,setFormError]=useState('');
  // Vuelta de Google: ?google=… (Gmail) o ?drive=… (Drive). Si falta un ajuste en Google Cloud, se abren las instrucciones.
  useEffect(()=>{const q=new URLSearchParams(window.location.search);
@@ -31,6 +32,7 @@ export default function SettingsView({state,reload}:{state:AppState;reload:()=>P
  const toggle=()=>run('pause',async()=>{await post({action:'pause',paused:!g.paused});await reload();setNotice(['success',g.paused?'Captura habilitada. El buzón se revisa solo cada mañana y también con «Comprobar ahora».':'Captura pausada.']);});
  const capture=()=>run('capture',async()=>{const b=await post<{drafts:number;messages:number;more:boolean;read:{read:number}|null}>({action:'capture'});await reload();
   setNotice(['success',`${b.drafts} ${b.drafts===1?'adjunto nuevo guardado':'adjuntos nuevos guardados'}; ${b.messages} ${b.messages===1?'correo revisado':'correos revisados'}${b.read?.read?`; ${b.read.read} leído(s) con IA`:''}.${b.more?' Quedan correos por revisar: vuelve a pulsar «Comprobar ahora».':''} Los documentos nuevos están en la Bandeja.`]);});
+ const saveCompany=()=>run('company',async()=>{await api('/api/company',{method:'POST',body:JSON.stringify(company)});await reload();setNotice(['success',company.name||company.taxIds||company.aliases?'Datos de tu empresa guardados. Se aplican a los documentos que se clasifiquen a partir de ahora.':'Datos de tu empresa borrados: ya no se comprueba el destinatario.']);});
  const configured=Boolean(state.gmail),scope=state.gmail?.labels.length?state.gmail.labels.map(l=>l.id==='INBOX'?'Recibidos':l.name).join(', '):'todo el correo',status=g.lastError?['danger','Requiere atención']:g.paused?['neutral','Captura pausada']:['success','Captura habilitada'];
  return <><PageHead eyebrow="CONFIGURACIÓN" title="Ajustes"/>
   {error&&<div className="alert danger" role="alert">{error}{issue&&<> <button type="button" className="link" onClick={()=>setHelp(true)}>Ver cómo solucionarlo</button></>}</div>}
@@ -60,6 +62,13 @@ export default function SettingsView({state,reload}:{state:AppState;reload:()=>P
       <button className="btn small" disabled={!!busy} onClick={toggle}>{g.paused?<Play size={15}/>:<Pause size={15}/>}{g.paused?'Habilitar captura':'Pausar'}</button>
       <button className="btn small" disabled={!!busy} onClick={configure}>{busy==='labels'?<Loader2 size={15} className="spin"/>:<SlidersHorizontal size={15}/>}Configurar</button></div>
      <div className="row-actions"><button className="link" onClick={connect}>Cambiar de cuenta o renovar el permiso</button><button className="link danger" onClick={disconnect}><Link2Off size={14}/>Desconectar</button></div></div>}</section>
+
+  <section className="panel setting"><div className="setting-head"><span className="setting-icon"><Building2 size={20}/></span><div><h2>Datos de mi empresa</h2><p className="muted">Sirven para comprobar que cada factura o albarán del correo va dirigido a tu empresa. Si el NIF del destinatario es de otra empresa, el documento va a <a href="#descartados">Descartados</a>, donde puedes revisarlo y recuperarlo. Si solo hay dudas (no coincide el nombre, o el NIF), queda como «Dudoso — revisar».</p></div>{state.company?<Badge tone="success">Activo</Badge>:<Badge>Sin datos</Badge>}</div>
+   <form className="form-stack" onSubmit={e=>{e.preventDefault();saveCompany();}}>
+    <label>Razón social<input maxLength={150} value={company.name} onChange={e=>setCompany({...company,name:e.target.value})} placeholder="p. ej. Mi Empresa, S.L."/></label>
+    <label>NIF / CIF<input maxLength={200} value={company.taxIds} onChange={e=>setCompany({...company,taxIds:e.target.value})} placeholder="p. ej. B12345678" autoCapitalize="characters" autoCorrect="off" spellCheck={false}/><span className="muted small">Si compras con varias sociedades, separa los NIF con comas.</span></label>
+    <label>Otros nombres<input maxLength={500} value={company.aliases} onChange={e=>setCompany({...company,aliases:e.target.value})} placeholder="Opcional: nombre comercial, nombre del local…"/><span className="muted small">Nombres con los que los proveedores te ponen en sus albaranes, separados por comas.</span></label>
+    <button className="btn primary" disabled={!!busy}>{busy==='company'?'Guardando…':'Guardar datos'}</button></form></section>
 
   <section className="panel setting"><div className="setting-head"><span className="setting-icon"><Palette size={20}/></span><div><h2>Apariencia</h2><p className="muted">Elige el fondo de la aplicación. Se recuerda en este navegador.</p></div></div><ThemePicker/></section>
 

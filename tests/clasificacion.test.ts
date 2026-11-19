@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync,readdirSync,statSync} from 'node:fs';
 import {join} from 'node:path';
 import {clasificacionSchema,clasificacionJsonSchema,clasificadorSistema,PROMPT_VERSION} from '../lib/prompts/clasificador-documentos';
-import {decidirEstado,estadoTrasError,estadosVisibles,concilia,estados,umbralesIniciales,maxIntentos,type ReadFailure} from '../lib/classify-rules';
+import {decidirEstado,comprobarDestinatario,estadoTrasError,estadosVisibles,concilia,estados,umbralesIniciales,maxIntentos,type ReadFailure} from '../lib/classify-rules';
 // Blindaje de los invariantes R2, R3, R4 y R6 (docs/requisitos-clasificacion.md). Las letras son las de R7.
 
 const linea={code:'T01',description:'Tomate',quantity:'10',unit:'kg',unitPrice:'1.20',discountPct:'',amount:'12.00',deliveryRef:'ALB-1',page:1};
@@ -124,4 +124,37 @@ test('R4: los informes y documentos similares se descartan aunque tengan importe
   formato:{etiquetas:'',numeracion:'',fecha:'',importes:''},datos:{...factura.datos,supplier:'',supplierTaxId:'',recipient:'',recipientTaxId:'',number:'',date:'',currency:'',deliveryRefs:[],subtotal:'',tax:'',total:'',lines:[]}};
  assert.equal(decidirEstado(clasificacionSchema.parse(informe)).estado,'DESCARTADO');
  assert.equal(decidirEstado(clasificacionSchema.parse({...informe,confianza:0.6})).estado,'DUDOSO');
+});
+
+test('Datos de mi empresa: un documento dirigido a otra empresa va a Descartados; los indicios, a DUDOSO',()=>{
+ const yo={name:'Sentidiño, S.L.',taxIds:'B87654321, B11111111',aliases:'Bar Sentidiño'};
+ const con=(datos:Raw,extra:Raw={},base:Raw=factura)=>decidirEstado(clasificacionSchema.parse({...base,...extra,datos:{...(base.datos as Raw),...datos}}),umbralesIniciales,[],yo);
+ // Sin datos de empresa guardados no se comprueba nada.
+ assert.equal(decide({...factura,datos:{...factura.datos,recipientTaxId:'A99999999'}}).estado,'FACTURA');
+ assert.equal(comprobarDestinatario(factura.datos,null).resultado,'sin_datos');
+ // El NIF del destinatario es el mío (con prefijo ES, guiones o la segunda sociedad): sigue su camino.
+ assert.equal(con({}).estado,'FACTURA');
+ assert.equal(con({recipientTaxId:'ES-B87654321',recipient:'Otro nombre'}).estado,'FACTURA');
+ assert.equal(con({recipientTaxId:'B-11111111'}).estado,'FACTURA');
+ // NIF de otra empresa y otro nombre: DESCARTADO con motivo, también si es un albarán.
+ const otra=con({recipient:'Restaurante Ajeno SL',recipientTaxId:'A99999999'});assert.equal(otra.estado,'DESCARTADO');assert.match(otra.motivo,/No va dirigido a tu empresa.*Ajeno.*A99999999/);
+ assert.equal(con({recipient:'Restaurante Ajeno SL',recipientTaxId:'A99999999'},{},albaran).estado,'DESCARTADO');
+ // Con poca seguridad en la lectura no se descarta: DUDOSO.
+ assert.equal(con({recipient:'Restaurante Ajeno SL',recipientTaxId:'A99999999'},{confianza:0.6}).estado,'DUDOSO');
+ // NIF distinto pero mi nombre (posible error de lectura del NIF): DUDOSO, no descartado.
+ assert.equal(con({recipientTaxId:'B87654327'}).estado,'DUDOSO');
+ // Sin NIF de destinatario: vale mi nombre o mi nombre comercial; otro nombre queda DUDOSO.
+ assert.equal(con({recipientTaxId:''}).estado,'FACTURA');
+ assert.equal(con({recipientTaxId:'',recipient:'BAR SENTIDIÑO (cocina)'},{},albaran).estado,'ALBARAN');
+ assert.equal(con({recipientTaxId:'',recipient:'Restaurante Ajeno'},{},albaran).estado,'DUDOSO');
+ // Sin destinatario en el documento no se comprueba.
+ assert.equal(con({recipientTaxId:'',recipient:''},{},albaran).estado,'ALBARAN');
+ // Mi empresa como emisor (factura de venta o lectura cruzada): DUDOSO.
+ const venta=con({supplierTaxId:'B87654321',recipient:'Cliente SA',recipientTaxId:'A99999999'});assert.equal(venta.estado,'DUDOSO');assert.match(venta.motivo,/emisor/);
+ // La comprobación solo resta: lo dudoso o descartado por otras razones nunca pasa a FACTURA ni ALBARAN.
+ assert.equal(con({},{confianza:0.5}).estado,'DUDOSO');
+ assert.equal(con({},{estado:'DESCARTADO',clase:'ninguna',tipo_documento:'presupuesto'}).estado,'DESCARTADO');
+ // La entrada del correo aplica los datos de la empresa; en la subida a mano solo avisa.
+ assert.ok(file('lib/intake.ts').includes('decidirEstado(x,await umbrales(),templates,await empresa())'));
+ assert.ok(!/decidirEstado\([^)]*empresa\(\)/.test(file('lib/documents.ts')));
 });

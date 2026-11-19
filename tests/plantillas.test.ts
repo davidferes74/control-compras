@@ -43,7 +43,7 @@ test('(e) un proveedor con plantilla no se salta la clasificación',()=>{
  // La entrada lee siempre con el prompt único y decide siempre con las reglas, haya plantilla o no.
  const intake=readFileSync('lib/intake.ts','utf8'),body=intake.slice(intake.indexOf('export async function clasificarDocumento'),intake.indexOf('/** Clasifica los documentos pendientes'));
  assert.ok(body.indexOf('findTemplates(')<body.indexOf('readFile(row.file_id,{context'),'la plantilla solo acompaña a la lectura');
- assert.ok(body.includes('decidirEstado(x,await umbrales(),templates)'));
+ assert.ok(body.includes('decidirEstado(x,await umbrales(),templates,await empresa())'));
  assert.ok(!/templates\.length[^;]*return\s*\{estado/.test(body),'tener plantilla no puede devolver un estado sin clasificar');
 });
 

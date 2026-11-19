@@ -8,7 +8,7 @@ import Decimal from 'decimal.js';
 import {searchMatches,type Suggestion,type NoteCandidate} from './search';
 import {reconcile,supplierGroups,type Doc,type Decisions,type InvoiceMatch,type DeliveryState} from './matching';
 import {refMatches} from './normalize';
-import {decidirEstado,estadoDe,estadosVisibles,umbralesSchema,umbralesIniciales,type Estado,type Decision,type Umbrales} from './classify-rules';
+import {decidirEstado,comprobarDestinatario,empresaSchema,estadoDe,estadosVisibles,umbralesSchema,umbralesIniciales,type Estado,type Decision,type Umbrales,type Empresa} from './classify-rules';
 import {PROMPT_VERSION,type Clasificacion} from './prompts/clasificador-documentos';
 
 export class AppError extends Error{constructor(message:string,public status:number){super(message);}}
@@ -33,6 +33,8 @@ export type ClassMeta={classState:Estado;origin:Origin;classBy:'ia'|'persona'|'m
 export const emptyInput=(kind:DocumentInput['kind']):DocumentInput=>({kind,supplier:'',supplierTaxId:'',number:'',date:null,deliveryRefs:[],subtotal:null,tax:null,total:null,lines:[]});
 /** Umbrales de confianza configurables (ajuste «clasificador»); por defecto 0,85. */
 export async function umbrales():Promise<Umbrales>{const s=umbralesSchema.safeParse({...umbralesIniciales,...(await getSetting<Partial<Umbrales>>('clasificador')||{})});return s.success?s.data:umbralesIniciales;}
+/** Datos de mi empresa (ajuste «empresa»), o null si no se han guardado. Sirven para comprobar el destinatario. */
+export async function empresa():Promise<Empresa|null>{const s=empresaSchema.safeParse(await getSetting('empresa'));return s.success&&(s.data.name||s.data.taxIds||s.data.aliases)?s.data:null;}
 export function fromClasificacion(x:Clasificacion,kind:DocumentInput['kind']):DocumentInput{const d=x.datos;
  return {kind,supplier:d.supplier||'',supplierTaxId:d.supplierTaxId||'',number:d.number||'',date:d.date,deliveryRefs:kind==='invoice'?d.deliveryRefs:[],subtotal:d.subtotal,tax:d.tax,total:d.total,
   lines:d.lines.map(l=>({code:l.code||'',description:l.description,quantity:l.quantity,unit:l.unit||'',unitPrice:l.unitPrice,discountPct:l.discountPct,amount:l.amount,deliveryRef:l.deliveryRef||''}))};}
@@ -46,14 +48,15 @@ export async function logClassification(c:PoolClient,documentId:string,m:Pick<Cl
 // prompt, pero el borrador es visible desde el primer momento y siempre lo confirma una persona. Si la IA no reconoce
 // una factura ni un albarán, queda en ámbar (DUDOSO) para que la persona decida; nunca se oculta ni se descarta solo.
 const uploadMeta=(x:Clasificacion,d:Decision):ClassMeta=>{const unknown=x.clase==='ninguna'||x.estado==='DESCARTADO';return metaFrom(x,d,unknown?'DUDOSO':estadoDe(d.kind),'escaneo','manual');};
-const readWarnings=(x:Clasificacion,d:Decision)=>[...(x.clase==='ninguna'||x.estado==='DESCARTADO'?[`La IA no reconoce este archivo como factura ni albarán (${x.tipo_documento||'tipo desconocido'}): ${d.motivo}`]:d.estado==='DUDOSO'?['Revisa con atención: '+d.motivo]:[]),...x.datos.warnings];
+// En una subida a mano el destinatario solo avisa: el borrador nunca se descarta solo.
+const readWarnings=(x:Clasificacion,d:Decision,e:Empresa|null)=>[...(['otra','incierto'].includes(comprobarDestinatario(x.datos,e).resultado)?['Comprueba el destinatario: '+comprobarDestinatario(x.datos,e).motivo]:[]),...(x.clase==='ninguna'||x.estado==='DESCARTADO'?[`La IA no reconoce este archivo como factura ni albarán (${x.tipo_documento||'tipo desconocido'}): ${d.motivo}`]:d.estado==='DUDOSO'?['Revisa con atención: '+d.motivo]:[]),...x.datos.warnings];
 
 /** Crea (o devuelve) el borrador de un archivo SUBIDO A MANO. Si la IA no puede leerlo, el borrador queda vacío con el motivo. */
 export async function draftFromFile(fileId:string,opts:{read:boolean}={read:true}):Promise<{id:string;readError?:string}>{
  const existing=await getPool().query('SELECT id FROM cc_documents WHERE organization_id=$1 AND file_id=$2 AND class_state=ANY($3) ORDER BY created_at LIMIT 1',[org(),fileId,estadosVisibles]);
  if(existing.rowCount)return {id:existing.rows[0].id};
  let input=emptyInput('invoice'),warnings:string[]=[],readError:string|undefined,meta:ClassMeta={classState:'DUDOSO',origin:'escaneo',classBy:'manual',reason:'Sin lectura automática: indica el tipo y los datos.'};
- if(opts.read){try{const x=await readFile(fileId),d=decidirEstado(x,await umbrales());input=fromClasificacion(x,d.kind);warnings=readWarnings(x,d);meta=uploadMeta(x,d);}catch(e){readError=e instanceof ReadError?e.message:'No se completó la lectura.';warnings=['Sin lectura automática: '+readError];}}
+ if(opts.read){try{const x=await readFile(fileId),d=decidirEstado(x,await umbrales());input=fromClasificacion(x,d.kind);warnings=readWarnings(x,d,await empresa());meta=uploadMeta(x,d);}catch(e){readError=e instanceof ReadError?e.message:'No se completó la lectura.';warnings=['Sin lectura automática: '+readError];}}
  else warnings=['Pendiente de lectura con IA.'];
  const id=randomUUID();
  await tx(async c=>{await insertDocument(c,id,fileId,input,warnings,meta);await audit('draft',`Nuevo borrador de ${kindLabel[input.kind].toLowerCase()} ${input.number||'sin número'}${input.supplier?' de '+input.supplier:''}.`,id,c);});
@@ -65,7 +68,7 @@ export async function rereadDraft(id:string){const r=await getPool().query('SELE
  if(origin==='correo')throw new AppError('Los documentos del correo se releen con el clasificador.',400);
  await getPool().query("UPDATE cc_files SET read_state='pending' WHERE id=$1 AND organization_id=$2 AND read_state='error'",[file_id,org()]);
  let x:Clasificacion;try{x=await readFile(file_id);}catch(e){throw new AppError(e instanceof ReadError?e.message:'No se completó la lectura.',e instanceof ReadError?e.status:502);}
- const d=decidirEstado(x,await umbrales());await tx(c=>fillDocument(c,id,fromClasificacion(x,d.kind),readWarnings(x,d),uploadMeta(x,d)));}
+ const d=decidirEstado(x,await umbrales()),e=await empresa();await tx(c=>fillDocument(c,id,fromClasificacion(x,d.kind),readWarnings(x,d,e),uploadMeta(x,d)));}
 
 export async function insertDocument(c:PoolClient,id:string,fileId:string|null,d:DocumentInput,warnings:string[],m:ClassMeta){
  await c.query("INSERT INTO cc_documents(id,organization_id,file_id,kind,supplier,supplier_tax_id,number,doc_date,delivery_refs,subtotal,tax,total,warnings,origin,class_state,class_by,class_confidence,class_reason,detected_type,missing_fields,prompt_version,class_model,class_data,classified_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,CASE WHEN $15::text='PENDIENTE_CLASIFICACION' THEN NULL ELSE now() END)",[id,org(),fileId,d.kind,d.supplier,d.supplierTaxId,d.number,d.date,d.deliveryRefs,d.subtotal,d.tax,d.total,warnings.map(w=>w.slice(0,500)).slice(0,30),m.origin,...classParams(m)]);

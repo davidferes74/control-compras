@@ -1,7 +1,7 @@
 import Decimal from 'decimal.js';
 import {z} from 'zod';
 import type {Clasificacion} from './prompts/clasificador-documentos';
-import {normTaxId} from './normalize';
+import {normTaxId,supplierKey} from './normalize';
 // Reglas deterministas del clasificador (R3 y R4, docs/requisitos-clasificacion.md). Sin base de datos ni red:
 // la IA propone y estas reglas deciden el estado final. Ante la duda, DUDOSO.
 export const estados=['PENDIENTE_CLASIFICACION','FACTURA','ALBARAN','DUDOSO','DESCARTADO'] as const;
@@ -33,8 +33,46 @@ export function proveedorConocido(c:Clasificacion,kind:Kind,plantillas:Plantilla
  const nif=normTaxId(c.datos.supplierTaxId||'');
  return c.coincide_con_plantilla==='si'&&nif.length>=8&&plantillas.some(t=>t.kind===kind&&normTaxId(t.supplierTaxId||'')===nif);}
 
-/** Estado final de un documento a partir de la respuesta (ya validada) de la IA. */
-export function decidirEstado(c:Clasificacion,u:Umbrales=umbralesIniciales,plantillas:PlantillaRef[]=[]):Decision{
+// Datos de mi empresa (Ajustes → «Datos de mi empresa»). Decisión del propietario, 19-11-2026: un documento dirigido
+// a otra empresa no es una compra propia y va a Descartados (recuperable); si solo hay indicios, queda DUDOSO.
+export const empresaSchema=z.object({name:z.string().trim().max(150),taxIds:z.string().trim().max(200),aliases:z.string().trim().max(500)});
+export type Empresa=z.infer<typeof empresaSchema>;
+const lista=(s:string)=>s.split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
+export type Destino={resultado:'sin_datos'|'ok'|'otra'|'incierto';motivo:string};
+/**
+ * ¿El documento va dirigido a mi empresa? Compara el destinatario leído con los datos de Ajustes.
+ * «otra»: el NIF del destinatario se lee y no es ninguno de los míos (ni el nombre). «incierto»: indicios que una
+ * persona debe mirar (NIF distinto con nombre igual, solo el nombre distinto, o mi empresa figura como emisor).
+ * «sin_datos»: no hay datos de empresa guardados o el documento no indica destinatario: no se comprueba nada.
+ */
+export function comprobarDestinatario(d:{supplierTaxId:string|null;recipient:string|null;recipientTaxId:string|null},e:Empresa|null):Destino{
+ const nifs=e?lista(e.taxIds).map(normTaxId).filter(n=>n.length>=8):[],nombres=e?[e.name,...lista(e.aliases)].map(supplierKey).filter(n=>n.length>=3):[];
+ if(!nifs.length&&!nombres.length)return {resultado:'sin_datos',motivo:''};
+ const rNif=normTaxId(d.recipientTaxId||''),sNif=normTaxId(d.supplierTaxId||''),rNombre=supplierKey(d.recipient||'');
+ const nombreOk=Boolean(rNombre)&&nombres.some(n=>rNombre.includes(n)||(rNombre.length>=4&&n.includes(rNombre)));
+ const quien=[d.recipient&&`«${d.recipient.trim().slice(0,80)}»`,d.recipientTaxId&&`NIF ${d.recipientTaxId.trim()}`].filter(Boolean).join(', ');
+ if(nifs.length&&rNif.length>=8&&nifs.includes(rNif))return {resultado:'ok',motivo:''};
+ if(sNif.length>=8&&nifs.includes(sNif))return {resultado:'incierto',motivo:'Tu empresa figura como emisor, no como destinatario: puede ser una factura de venta o una lectura con emisor y destinatario cambiados.'};
+ if(nifs.length&&rNif.length>=8)return nombreOk
+  ?{resultado:'incierto',motivo:`El nombre del destinatario coincide con tu empresa, pero su NIF (${d.recipientTaxId!.trim()}) no es el que tienes en Ajustes.`}
+  :{resultado:'otra',motivo:`No va dirigido a tu empresa: el destinatario es ${quien}.`};
+ if(!rNombre)return {resultado:'sin_datos',motivo:''};
+ if(nombreOk)return {resultado:'ok',motivo:''};
+ return nombres.length?{resultado:'incierto',motivo:`El destinatario (${quien}) no coincide con el nombre de tu empresa y el documento no indica su NIF.`}:{resultado:'sin_datos',motivo:''};}
+
+/**
+ * Estado final de un documento a partir de la respuesta (ya validada) de la IA. Con los datos de mi empresa, además
+ * comprueba el destinatario: dirigido a otra empresa → DESCARTADO (si la lectura es segura; si no, DUDOSO);
+ * indicios → DUDOSO. La comprobación solo puede restar: nunca convierte nada en FACTURA ni en ALBARAN.
+ */
+export function decidirEstado(c:Clasificacion,u:Umbrales=umbralesIniciales,plantillas:PlantillaRef[]=[],empresa:Empresa|null=null):Decision{
+ const base=decidirSinEmpresa(c,u,plantillas);
+ if(base.estado==='DESCARTADO'||c.partes.length>1)return base;
+ const dest=comprobarDestinatario(c.datos,empresa);
+ if(dest.resultado==='otra')return c.confianza>=u.descartado?{estado:'DESCARTADO',kind:base.kind,motivo:dest.motivo+' Si es un error, recupéralo desde Descartados.',faltan:[]}:{...base,estado:'DUDOSO',motivo:dest.motivo+' Revísalo: la lectura no es del todo segura.'};
+ if(dest.resultado==='incierto')return base.estado==='DUDOSO'?{...base,motivo:base.motivo+' Además: '+dest.motivo}:{...base,estado:'DUDOSO',motivo:dest.motivo};
+ return base;}
+function decidirSinEmpresa(c:Clasificacion,u:Umbrales,plantillas:PlantillaRef[]):Decision{
  const d=c.datos,kind=kindDe(c),motivo=c.motivo.trim()||'Sin motivo indicado.';
  const dudoso=(why:string,faltan:string[]=c.campos_faltantes):Decision=>({estado:'DUDOSO',kind,motivo:why,faltan});
  if(c.partes.length>1)return dudoso('El archivo contiene varios documentos.');

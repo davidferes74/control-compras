@@ -16,6 +16,7 @@ Aclaran el texto original, que sigue debajo sin cambios. Si hay contradicción, 
 2. Los archivos **subidos a mano no pasan por el clasificador**. La entrada única de R2 se aplica a los adjuntos de correo; la subida manual es el único otro camino permitido y sigue como hasta ahora (lectura con IA y confirmación de la persona).
 3. Si no se puede clasificar (límite diario de lecturas agotado o clave no válida), los documentos quedan pendientes, fuera de los listados, y la app muestra un aviso con el contador «N documentos pendientes de clasificar».
 4. Abonos y facturas rectificativas se clasifican como `FACTURA` con su tipo indicado, y la app los sigue tratando como abono en la conciliación.
+5. (19-11-2026) **Datos de mi empresa.** En Ajustes se guardan la razón social, el NIF (o varios) y otros nombres de la empresa. Al clasificar un documento del correo se comprueba el destinatario: si su NIF se lee y es de otra empresa, el documento va a `DESCARTADO` con el motivo (recuperable desde Descartados como factura o albarán; nunca se borra); si la lectura no es segura o solo hay indicios (el nombre no coincide y no hay NIF, el NIF no coincide pero el nombre sí, o la empresa propia figura como emisor), queda `DUDOSO`. Si el documento no indica destinatario o no hay datos guardados, no se comprueba. La comprobación solo resta: nunca convierte nada en `FACTURA` ni `ALBARAN`. En las subidas a mano solo añade un aviso. Reglas en `comprobarDestinatario` y `decidirEstado` (`lib/classify-rules.ts`); pruebas en `tests/clasificacion.test.ts`.
 
 Avance (18-11-2026):
 
