@@ -114,3 +114,14 @@ test('(h) un documento del correo que ya existía se enlaza, no se duplica',()=>
  assert.ok(intake.includes('if(stored.duplicate)return'),'mismo archivo (hash): no crea otro documento');
  assert.ok(intake.includes('findDuplicate(c,id,input)')&&intake.includes('duplicateOf:dup?.id||null'),'mismo proveedor y número: se enlaza con el existente');
 });
+
+test('R4: los informes y documentos similares se descartan aunque tengan importes (prompt 2026-11-19.1)',()=>{
+ // El prompt nombra los informes como DESCARTADO y limita DUDOSO a lo que parece factura o albarán.
+ for(const s of ['cualquier informe','informe técnico','de mantenimiento','estado de cuenta','aviso de envío','aunque contenga importes','Es DUDOSO solo si el documento parece una factura o un albarán'])
+  assert.ok(clasificadorSistema.includes(s),`falta «${s}» en el prompt`);
+ // Las reglas deterministas no cambian: un informe descartado con seguridad alta queda DESCARTADO; con poca, DUDOSO.
+ const informe={...factura,estado:'DESCARTADO',confianza:0.95,tipo_documento:'informe de mantenimiento',clase:'ninguna',motivo:'Es un informe de mantenimiento, no una factura.',
+  formato:{etiquetas:'',numeracion:'',fecha:'',importes:''},datos:{...factura.datos,supplier:'',supplierTaxId:'',recipient:'',recipientTaxId:'',number:'',date:'',currency:'',deliveryRefs:[],subtotal:'',tax:'',total:'',lines:[]}};
+ assert.equal(decidirEstado(clasificacionSchema.parse(informe)).estado,'DESCARTADO');
+ assert.equal(decidirEstado(clasificacionSchema.parse({...informe,confianza:0.6})).estado,'DUDOSO');
+});
