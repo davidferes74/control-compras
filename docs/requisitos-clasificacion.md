@@ -21,7 +21,7 @@ Avance (18-11-2026):
 
 - R1 (solo correos de entrada): `lib/gmail-capture.ts`, pruebas en `tests/correo-entrada.test.ts`.
 - R2 y R3 (entrada única, estados, descartar sin borrar, PDF con varios documentos): `lib/intake.ts`, `lib/documents.ts`, `migrations/004_clasificacion.sql`.
-- R4 (criterios y umbrales): `lib/classify-rules.ts`. Umbrales en el ajuste `clasificador` de `cc_settings` (por defecto 0,85).
+- R4 (criterios y umbrales): `lib/classify-rules.ts`. Umbrales en el ajuste `clasificador` de `cc_settings` (por defecto 0,85; `plantilla` 0,70 para facturas de proveedor conocido).
 - R6 (prompt único y versionado): `lib/prompts/clasificador-documentos.ts`. Es el texto base de abajo adaptado a los campos de la app; los datos que no aparecen se devuelven como cadena vacía en lugar de null.
 - R5 (plantillas de proveedor): `lib/templates.ts`, `migrations/005_plantillas.sql`. Se aprende solo cuando una persona valida o corrige (`saveDocument`); la plantilla se pasa a la IA como dato de ayuda y nunca decide el estado. El proveedor se reconoce por el remitente del correo y, en facturas electrónicas, por el NIF dentro del texto; en un PDF el NIF no se puede buscar antes de leerlo, así que la primera vez que un proveedor escribe desde una dirección nueva se lee sin plantilla.
 - Pruebas de blindaje: `tests/clasificacion.test.ts` (b, c, d, f, g, h, i), `tests/correo-entrada.test.ts` (a) y `tests/plantillas.test.ts` (e).
@@ -142,6 +142,11 @@ Guardar siempre el tipo de documento detectado, también en los descartados.
   extraer más rápido y con más precisión.
 - La plantilla acelera la extracción pero NUNCA exime de la clasificación: un
   proveedor conocido también envía documentos que no son facturas ni albaranes.
+- Excepción aprobada por el propietario (19-11-2026): si hay plantilla validada
+  del mismo tipo, el documento coincide con ella y el NIF es el mismo, una
+  factura se da por verificada con el umbral `plantilla` (inicial 0,70) en lugar
+  del de factura. Sigue pasando por el clasificador y por todas las demás
+  comprobaciones; no aplica a albaranes.
 - Si el documento no encaja con la plantilla (formato cambiado), extraer sin
   ella, marcar `DUDOSO` y proponer actualizar la plantilla tras la validación.
 - Las correcciones manuales (recuperar un descartado, descartar un documento,

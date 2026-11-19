@@ -69,7 +69,7 @@ export async function clasificarDocumento(id:string,opts:{fresh?:boolean}={}):Pr
   if(n){const d=decidirEstado(x),reason=`El archivo contiene ${x.partes.length} documentos (${x.partes.map(p=>p.tipo).join(', ')}): se ha separado por páginas y cada parte se clasifica aparte.`;
    await tx(async c=>{await fillDocument(c,id,emptyInput('invoice'),[],{...metaFrom(x,d,'DESCARTADO','correo','ia'),reason,detectedType:'varios documentos'});await audit('classify',`Archivo «${row.filename}» separado en ${n} documento(s).`,id,c);});
    return {estado:'DESCARTADO',split:n};}}
- const d=decidirEstado(x,await umbrales()),input=fromClasificacion(x,d.kind),warnings=x.datos.warnings;
+ const d=decidirEstado(x,await umbrales(),templates),input=fromClasificacion(x,d.kind),warnings=x.datos.warnings;
  return tx(async c=>{
   const cur=await c.query('SELECT status,class_state FROM cc_documents WHERE id=$1 AND organization_id=$2 FOR UPDATE',[id,org()]);
   if(cur.rows[0].status!=='draft'||!['PENDIENTE_CLASIFICACION','DUDOSO'].includes(cur.rows[0].class_state))return {estado:cur.rows[0].class_state as Estado};
