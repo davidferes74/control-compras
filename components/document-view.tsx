@@ -1,7 +1,7 @@
 'use client';
 import {useEffect,useMemo,useState} from 'react';
 import {ArrowLeft,ArrowRight,Check,CheckCircle2,AlertTriangle,Info,Loader2,Plus,Sparkles,Trash2,X,Eye,EyeOff,ExternalLink,RotateCcw,HelpCircle} from 'lucide-react';
-import {api,money,qty,date,parseDecimal,showDecimal,kindLabel,statusInfo,navInfo,type FullDocument,type Kind,type InvoiceMatch,type DeliveryState } from './lib';
+import {api,money,qty,date,parseDecimal,showDecimal,kindLabel,statusInfo,navInfo,motivoValidacion,type FullDocument,type Kind,type InvoiceMatch,type DeliveryState } from './lib';
 import {Badge,StatusBadge,ClassBadge,HoldButton,go} from './ui';
 
 type FormLine={code:string;description:string;quantity:string;unit:string;unitPrice:string;discountPct:string;amount:string;deliveryRef:string};
@@ -94,9 +94,12 @@ function InvoicePanel({doc,match,decide,busy}:{doc:FullDocument;match:InvoiceMat
  const [accepting,setAccepting]=useState<string|null>(null),[reason,setReason]=useState('');
  const notes=new Map(doc.related.map(r=>[r.id,r])),noteLine=useMemo(()=>{const m=new Map<string,{note:string;line:FullDocument['related'][number]['lines'][number]}>();for(const r of doc.related)for(const l of r.lines)m.set(l.id,{note:r.number,line:l});return m;},[doc.related]);
  const s=statusInfo[match.status],open=match.discrepancies.filter(d=>!d.accepted&&d.severity!=='info'),accepted=match.discrepancies.filter(d=>d.accepted),infos=match.discrepancies.filter(d=>!d.accepted&&d.severity==='info');
- const headline={ok:'La factura cuadra con sus albaranes.',diff:'Hay diferencias entre la factura y los albaranes.',missing:'Falta algún albarán para respaldar la factura.',review:'Cuadra, pero hay emparejamientos que conviene revisar.'}[match.status];
+ const headline=match.ready?'Cuadra al 100 % con los albaranes propuestos.':{ok:'La factura cuadra con sus albaranes.',diff:'Hay diferencias entre la factura y los albaranes.',missing:'Falta algún albarán para respaldar la factura.',review:'Cuadra, pero hay emparejamientos que conviene revisar.'}[match.status];
+ const proposal=match.ready?match.discrepancies.find(d=>d.kind==='proposed'&&!d.accepted):undefined;
+ const validate=()=>proposal&&decide(proposal.key,motivoValidacion(match.deliveryNoteIds.map(n=>notes.get(n)?.number||'albarán')));
  return <section className={'panel match tone-'+match.status}>
   <div className="match-head">{match.status==='ok'?<CheckCircle2 size={26}/>:<AlertTriangle size={26}/>}<div><p className="eyebrow">CONCILIACIÓN</p><h2>{headline}</h2><p className="muted">{match.deliveryNoteIds.length?<>{match.proposed?'Albaranes propuestos':'Albaranes'}: {match.deliveryNoteIds.map((n,i)=><span key={n}>{i>0&&', '}<a href={'#doc/'+n}>{notes.get(n)?.number||'albarán'}</a></span>)}</>:'Sin albaranes asociados.'} · Precios: {match.prices==='ok'?'comprobados':match.prices==='diff'?(match.discrepancies.filter(d=>d.kind==='price').every(d=>d.accepted)?'con diferencias aceptadas':'con diferencias'):'no comprobables (albaranes sin precio)'}</p></div><Badge tone={s.tone}>{s.label}</Badge></div>
+  {proposal&&<div className="alert success ready-cta" role="status"><CheckCircle2 size={16}/><span>La factura no cita albaranes, pero cuadra al 100 % con {match.deliveryNoteIds.length>1?'los propuestos':'el propuesto'}. Ábrelos con los enlaces de arriba para comprobarlos.</span><button className="btn small primary" disabled={busy} onClick={validate}>Validar conciliación</button></div>}
   {open.length>0&&<ul className="issues">{open.map(d=>{const Icon=severityIcon[d.severity];return <li key={d.key} className={'sev-'+d.severity}><Icon size={16}/><div><p>{d.message}</p>
    {accepting===d.key?<form className="accept" onSubmit={e=>{e.preventDefault();decide(d.key,reason);setAccepting(null);}}><input autoFocus placeholder="Motivo (p. ej. «subida de tarifa pactada»)" enterKeyHint="done" value={reason} onChange={e=>setReason(e.target.value)} minLength={3} required/><button className="btn small primary" disabled={busy}>Aceptar</button><button type="button" className="btn small" onClick={()=>setAccepting(null)}>Cancelar</button></form>
    :<button className="link" onClick={()=>{setAccepting(d.key);setReason('');}}>Aceptar con motivo</button>}</div></li>;})}</ul>}

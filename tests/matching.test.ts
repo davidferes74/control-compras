@@ -144,3 +144,49 @@ test('ceros a la izquierda en cualquier tramo del número: F-2026-77 es F-2026-0
  assert.ok(refMatches('ALB-0100','ALB 100'));
  assert.ok(!refMatches('F-2026-77','F-2026-770'));
 });
+
+test('sin albaranes citados: propone solo la combinación que cuadra al 100 % y queda «Lista para validar»',()=>{
+ const a1=doc({kind:'delivery_note',number:'A-1',date:'2026-11-02',lines:[line({code:'T01',description:'Tomate',quantity:'10'})]});
+ const a2=doc({kind:'delivery_note',number:'A-2',date:'2026-11-05',lines:[line({code:'L02',description:'Lechuga',quantity:'5'})]});
+ const otro=doc({kind:'delivery_note',number:'A-3',date:'2026-11-06',lines:[line({code:'P03',description:'Pepino',quantity:'7'})]});
+ const f=doc({kind:'invoice',number:'F-9',date:'2026-11-10',lines:[line({code:'T01',description:'Tomate',quantity:'10'}),line({code:'L02',description:'Lechuga',quantity:'5'})]});
+ const m=reconcile([a1,a2,otro,f]).invoices.get(f.id)!;
+ assert.deepEqual(m.deliveryNoteIds,[a1.id,a2.id],'el albarán que no casa no se propone');
+ assert.equal(m.exact,true);assert.equal(m.ready,true);assert.equal(m.status,'review');
+ const p=m.discrepancies.find(d=>d.kind==='proposed')!;assert.match(p.message,/cuadra al 100 %.*A-1, A-2/);
+ // Al validar la propuesta (aceptarla con motivo) queda Conforme y deja de estar «lista».
+ const decisions:Decisions=new Map([[f.id,new Map([[p.key,{reason:'Validado',at:'2026-11-19'}]])]]);
+ const v=reconcile([a1,a2,otro,f],decisions).invoices.get(f.id)!;assert.equal(v.status,'ok');assert.equal(v.ready,false);
+});
+
+test('la factura llega antes que el albarán: se propone un albarán de hasta 15 días después',()=>{
+ const f=doc({kind:'invoice',number:'F-10',date:'2026-11-10',lines:[line({code:'T01',description:'Tomate',quantity:'10'})]});
+ const tarde=doc({kind:'delivery_note',number:'A-7',date:'2026-11-20',lines:[line({code:'T01',description:'Tomate',quantity:'10'})]});
+ assert.equal(reconcile([f]).invoices.get(f.id)!.status,'missing','sin albarán todavía');
+ const m=reconcile([f,tarde]).invoices.get(f.id)!;assert.equal(m.ready,true);assert.deepEqual(m.deliveryNoteIds,[tarde.id]);
+ const muyTarde=doc({kind:'delivery_note',number:'A-8',date:'2026-12-20',lines:[line({code:'T01',description:'Tomate',quantity:'10'})]});
+ assert.equal(reconcile([f,muyTarde]).invoices.get(f.id)!.proposed,false,'más de 15 días después no se propone');
+});
+
+test('propuesta que no cuadra al 100 %: no queda lista para validar',()=>{
+ const a=doc({kind:'delivery_note',number:'A-1',date:'2026-11-02',lines:[line({code:'T01',description:'Tomate',quantity:'8'})]});
+ const f=doc({kind:'invoice',number:'F-11',date:'2026-11-10',lines:[line({code:'T01',description:'Tomate',quantity:'10'})]});
+ const m=reconcile([a,f]).invoices.get(f.id)!;assert.equal(m.exact,false);assert.equal(m.ready,false);assert.notEqual(m.status,'ok');
+ // Albarán con más de lo facturado: tampoco es 100 %.
+ const b=doc({kind:'delivery_note',number:'A-2',date:'2026-11-02',lines:[line({code:'T01',description:'Tomate',quantity:'12'})]});
+ assert.equal(reconcile([b,f]).invoices.get(f.id)!.ready,false);
+ // Precio distinto (ambos valorados): tampoco.
+ const c=doc({kind:'delivery_note',number:'A-3',date:'2026-11-02',lines:[line({code:'T01',description:'Tomate',quantity:'10',unitPrice:'1.00'})]});
+ const fp=doc({kind:'invoice',number:'F-12',date:'2026-11-10',lines:[line({code:'T01',description:'Tomate',quantity:'10',unitPrice:'1.50',amount:'15.00'})]});
+ assert.equal(reconcile([c,fp]).invoices.get(fp.id)!.ready,false);
+ // Emparejamiento solo por descripción parecida: no es 100 %.
+ const s=doc({kind:'delivery_note',number:'A-4',date:'2026-11-02',lines:[line({description:'Tomate pera caja 5 kg',quantity:'10'})]});
+ const fs=doc({kind:'invoice',number:'F-13',date:'2026-11-10',lines:[line({description:'Tomate pera 5 kg',quantity:'10'})]});
+ assert.equal(reconcile([s,fs]).invoices.get(fs.id)!.ready,false);
+});
+
+test('factura que cita sus albaranes: no cambia (Conforme sin validar propuesta)',()=>{
+ const a=doc({kind:'delivery_note',number:'A-1',lines:[line({code:'T01',description:'Tomate',quantity:'10'})]});
+ const f=doc({kind:'invoice',number:'F-14',deliveryRefs:['A-1'],lines:[line({code:'T01',description:'Tomate',quantity:'10'})]});
+ const m=reconcile([a,f]).invoices.get(f.id)!;assert.equal(m.status,'ok');assert.equal(m.proposed,false);assert.equal(m.ready,false);
+});

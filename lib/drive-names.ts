@@ -11,5 +11,7 @@ const MONTHS=['enero','febrero','marzo','abril','mayo','junio','julio','agosto',
 /** Carpetas de año y mes para una fecha YYYY-MM-DD: «2026» y «11 noviembre». */
 export function monthFolders(date:string|null|undefined){const m=/^(\d{4})-(\d{2})/.exec(date||'');const month=m?Number(m[2]):0;if(!m||month<1||month>12)return {year:'Sin fecha',month:'Sin fecha',key:'sin-fecha'};return {year:m[1],month:m[2]+' '+MONTHS[month-1],key:m[1]+'-'+m[2]};}
 const kindName={invoice:'Factura',delivery_note:'Albarán',credit_note:'Abono'} as const;
+/** Subcarpeta dentro del mes (decisión del propietario, 19-11-2026): facturas y abonos por un lado, albaranes por otro. */
+export const kindFolder=(kind:string)=>kind==='delivery_note'?'Albaranes':'Facturas';
 /** Nombre de un documento confirmado de control-compras (sin extensión). */
 export function documentName(d:{kind:keyof typeof kindName;date:string|null;supplier:string;number:string}){return fileName([d.date||'sin fecha',d.supplier||'Proveedor sin nombre',kindName[d.kind]+' '+(d.number||'sin número')]);}

@@ -2,9 +2,11 @@ import {getPool,org,audit} from './server-store';
 import {kindLabel} from './documents';
 import {statusLabel,deliveryLabel,type InvoiceMatch,type InvoiceStatus,type DeliveryStatus} from './matching';
 import {driveRow,driveConnected,updateDrive,accessToken,createFolder,upload,createSpreadsheet,sheets,DriveError} from './drive';
-import {documentName,extensionFor,monthFolders} from './drive-names';
+import {documentName,extensionFor,monthFolders,kindFolder} from './drive-names';
 // Archivo en la carpeta de Drive que creó la app (igual que en Recepciones-IA):
-//   <carpeta>/2026/11 noviembre/2026-11-17 · Proveedor · Factura F-2026-0312.pdf
+//   <carpeta>/2026/11 noviembre/Facturas/2026-11-17 · Proveedor · Factura F-2026-0312.pdf
+//   <carpeta>/2026/11 noviembre/Albaranes/2026-11-17 · Proveedor · Albarán A-123.jpg  (la foto o el PDF escaneado)
+//   (los guardados antes del 19-11-2026 siguen directamente en la carpeta del mes: no se mueven)
 //   <carpeta>/Registro control de compras  (hoja «Documentos» y «Líneas» con los datos confirmados)
 // Se sube al confirmar (después de responder), en la revisión diaria como reintento y con «Guardar ahora lo pendiente».
 
@@ -23,15 +25,17 @@ export async function archivePending(budgetMs=40_000,onlyId?:string){
   const todo=await pool.query(`SELECT d.id FROM cc_documents d WHERE d.organization_id=$1 AND d.status='confirmed' AND d.file_id IS NOT NULL AND ${claimable}${onlyId?' AND d.id=$2':''} ORDER BY d.confirmed_at`,onlyId?[org(),onlyId]:[org()]);
   out.pending=todo.rowCount||0;if(!out.pending)return out;
   const token=await accessToken(r.secret),folders={...(r.folders||{})};let recreated=false;
-  const folderFor=async(date:string|null)=>{const m=monthFolders(date);if(folders[m.key])return folders[m.key];const yearKey='y:'+m.year;if(!folders[yearKey])folders[yearKey]=await createFolder(token,m.year,r.folder_id);
+  const monthFolder=async(date:string|null)=>{const m=monthFolders(date);if(folders[m.key])return folders[m.key];const yearKey='y:'+m.year;if(!folders[yearKey])folders[yearKey]=await createFolder(token,m.year,r.folder_id);
    folders[m.key]=m.year===m.month?folders[yearKey]:await createFolder(token,m.month,folders[yearKey]);await updateDrive({folders});return folders[m.key];};
+  const folderFor=async(date:string|null,kind:string)=>{const sub=kindFolder(kind),key=monthFolders(date).key+':'+sub;if(folders[key])return folders[key];
+   folders[key]=await createFolder(token,sub,await monthFolder(date));await updateDrive({folders});return folders[key];};
   for(const {id} of todo.rows){if(Date.now()>end)break;
    const claim=await pool.query(`UPDATE cc_documents d SET drive_at=now() FROM cc_files f WHERE d.id=$1 AND d.organization_id=$2 AND f.id=d.file_id AND ${claimable} RETURNING d.kind,d.doc_date,d.supplier,d.number,f.mime,f.bytes`,[id,org()]);
    if(!claim.rowCount)continue;const d=claim.rows[0],date=d.doc_date?String(d.doc_date).slice(0,10):null,name=documentName({kind:d.kind,date,supplier:d.supplier,number:d.number})+'.'+extensionFor(d.mime);
-   try{let parent=await folderFor(date),fileId:string;
+   try{let parent=await folderFor(date,d.kind),fileId:string;
     try{fileId=await upload(token,parent,name,d.mime,d.bytes);}
     catch(err){ // La subcarpeta del mes pudo borrarse en Drive: se vuelve a crear una vez.
-     if(!(err instanceof DriveError)||err.kind!=='folder'||recreated)throw err;recreated=true;for(const k of Object.keys(folders))delete folders[k];parent=await folderFor(date);fileId=await upload(token,parent,name,d.mime,d.bytes);}
+     if(!(err instanceof DriveError)||err.kind!=='folder'||recreated)throw err;recreated=true;for(const k of Object.keys(folders))delete folders[k];parent=await folderFor(date,d.kind);fileId=await upload(token,parent,name,d.mime,d.bytes);}
     await pool.query('UPDATE cc_documents SET drive_file_id=$3,drive_name=$4,drive_error=NULL,drive_at=now() WHERE id=$1 AND organization_id=$2',[id,org(),fileId,name]);out.uploaded++;out.pending--;
     await audit('drive',`Guardado en Drive: ${name}`,id);
    }catch(err){await pool.query('UPDATE cc_documents SET drive_error=$3,drive_at=now() WHERE id=$1 AND organization_id=$2',[id,org(),message(err)]);throw err;}

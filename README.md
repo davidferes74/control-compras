@@ -11,8 +11,9 @@ App externa e independiente que **concilia facturas de proveedor con albaranes**
    - Factura ↔ albaranes que cita (o, si no cita ninguno, propuestos por proveedor y fecha → «Revisar»).
    - Líneas por código del proveedor, luego descripción exacta, luego descripción parecida (marcada para revisar).
    - Detecta: cantidad facturada de más, facturado sin albarán, albarán citado inexistente, albarán ya facturado, precio o descuento distinto (si el albarán está valorado), importe de línea mal calculado, totales/IVA que no cuadran, y lo entregado sin facturar.
+   - Si la factura no cita albaranes, se busca la combinación de albaranes pendientes del proveedor (de 90 días antes a 15 días después) que cuadra al 100 %; si la hay, la factura queda **Lista para validar** en Diferencias, con enlace a cada albarán, y se valida con un clic.
    - Estados: **Conforme**, **Con diferencias**, **Falta albarán**, **Revisar**. Una diferencia solo se acepta con motivo; si cambian los datos, la aceptación deja de valer.
-5. **Archivo en Google Drive** (conexión guiada, igual que en Recepciones-IA): el usuario escribe el nombre de la carpeta, elige su cuenta y pulsa Permitir; la app crea la carpeta y guarda cada documento confirmado en `Carpeta/2026/11 noviembre/2026-11-17 · Proveedor · Factura F-123.pdf`, más la hoja «Registro control de compras» (pestañas *Documentos* y *Líneas*). Si Google rechaza la conexión, la app dice el motivo y, si falta un ajuste en Google Cloud, muestra los pasos.
+5. **Archivo en Google Drive** (conexión guiada, igual que en Recepciones-IA): el usuario escribe el nombre de la carpeta, elige su cuenta y pulsa Permitir; la app crea la carpeta y guarda cada documento confirmado en `Carpeta/2026/11 noviembre/Facturas/2026-11-17 · Proveedor · Factura F-123.pdf` (los albaranes, con su foto o PDF, en `…/11 noviembre/Albaranes/`), más la hoja «Registro control de compras» (pestañas *Documentos* y *Líneas*). Si Google rechaza la conexión, la app dice el motivo y, si falta un ajuste en Google Cloud, muestra los pasos.
 
 Los abonos se registran y archivan, pero se revisan a mano.
 
